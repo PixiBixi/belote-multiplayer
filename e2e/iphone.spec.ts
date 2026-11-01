@@ -1,5 +1,5 @@
 import { devices, expect, test, type Page } from '@playwright/test'
-import { playSolo } from './helpers.js'
+import { createTable, playSolo } from './helpers.js'
 import { settle } from './settle.js'
 
 /* Safari's engine at Safari's viewports: WebKit sizes inputs and grids differently from Chrome. */
@@ -44,6 +44,35 @@ for (const name of PHONES) {
       await page.goto('/')
       await settle(page)
       expect((await geometry(page)).hscroll).toBe(false)
+    })
+
+    test('lobby seats do not overlap and a seat change moves mine', async ({ page }) => {
+      await createTable(page, 'Ana')
+      await settle(page)
+      const overlaps = () =>
+        page.evaluate(() => {
+          const seats = [...document.querySelectorAll('.lobby-head, .lobby-seat')].map((e) =>
+            e.getBoundingClientRect(),
+          )
+          let n = 0
+          for (let i = 0; i < seats.length; i++)
+            for (let j = i + 1; j < seats.length; j++) {
+              const a = seats[i]!
+              const b = seats[j]!
+              if (
+                Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 &&
+                Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2
+              )
+                n++
+            }
+          return n
+        })
+      expect(await overlaps()).toBe(0)
+      await page
+        .locator('.lobby-seat.at-top')
+        .getByRole('button', { name: /asseoir/ })
+        .click()
+      await expect(page.locator('.lobby-seat.mine')).toHaveClass(/at-top/)
     })
 
     test('table fits without overlap', async ({ page }) => {
