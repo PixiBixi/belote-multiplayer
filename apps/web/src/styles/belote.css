@@ -624,6 +624,7 @@ button:focus-visible {
 .mini-felt-centre {
   position: absolute;
   inset: 0;
+  pointer-events: none;
   display: grid;
   place-items: center;
   font-size: 0.8rem;
