@@ -108,8 +108,8 @@ export function useGameSocket() {
   const creating = useRef(false)
 
   /**
-   * Creates a table on the default rules. `solo` also seats three bots and deals at
-   * once: the emits are ordered on one socket, so the server sees them in sequence.
+   * Creates a table on the default rules. `solo` also seats three bots but stays in
+   * the lobby, so the rules can be set before the host starts.
    */
   const createRoom = useCallback(
     (playerName: string, solo = false, level: BotLevel = 'normal') => {
@@ -132,9 +132,6 @@ export function useGameSocket() {
           for (const seat of [1, 2, 3]) {
             socket.emit('room:setSeat', { seat, occupant: { kind: 'bot', level } }, () => undefined)
           }
-          socket.emit('game:start', {}, (r) => {
-            if (!r.ok) fail(r.error)
-          })
         },
       )
     },

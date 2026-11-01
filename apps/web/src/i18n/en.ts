@@ -59,7 +59,7 @@ export const en: Messages = {
     nameLabel: 'Your name',
     namePlaceholder: 'E.g. Grandma Jean',
     solo: 'Play against the computer',
-    soloHint: 'A game right now, with three bots.',
+    soloHint: 'Three bots at your table, you pick the rules.',
     create: 'Create a table',
     createHint: 'Invite your friends with a link.',
     joinTitle: 'Join a table',

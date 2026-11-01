@@ -5,8 +5,9 @@ owns the state and the rules and sends each player only what that player may see
 client renders what it is given and never decides anything.
 
 Create a table, share the six-character code or the link, fill the empty seats with
-bots, or press **Play solo** for three bots at once. Voice chat runs over a WebRTC
-mesh and never touches the server.
+bots, or press **Play against the computer** to get a table with three bots already
+seated, where you pick the rules and start. Voice chat runs over a WebRTC mesh and
+never touches the server.
 
 ## Rules
 

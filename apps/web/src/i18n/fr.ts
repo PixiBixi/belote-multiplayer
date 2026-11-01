@@ -49,7 +49,7 @@ export const fr = {
     nameLabel: 'Ton prénom',
     namePlaceholder: 'Ex. Mamie Jeanne',
     solo: 'Jouer contre l’ordinateur',
-    soloHint: 'Une partie tout de suite, avec trois bots.',
+    soloHint: 'Trois bots à ta table, tu choisis les règles.',
     create: 'Créer une table',
     createHint: 'Invite tes amis avec un lien.',
     joinTitle: 'Rejoindre une table',

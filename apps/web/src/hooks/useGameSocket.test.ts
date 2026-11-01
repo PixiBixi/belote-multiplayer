@@ -124,7 +124,7 @@ describe('the actions and what goes on the wire', () => {
     })
   })
 
-  it('seats three bots and starts the game, in that order, for a solo game', () => {
+  it('seats three bots for a solo game and leaves the start to the lobby', () => {
     const { result } = renderHook(() => useGameSocket())
     act(() => {
       result.current.actions.createRoom('Ana', true, 'hard')
@@ -139,7 +139,6 @@ describe('the actions and what goes on the wire', () => {
       'room:setSeat',
       'room:setSeat',
       'room:setSeat',
-      'game:start',
     ])
     expect(only('room:setSeat').map((entry) => entry.payload)).toEqual([
       { seat: 1, occupant: { kind: 'bot', level: 'hard' } },
