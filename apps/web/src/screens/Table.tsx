@@ -8,7 +8,8 @@ import { RulesSheet, ScoreSheet } from '../components/ScoreSheet.js'
 import { useCountdown } from '../hooks/useCountdown.js'
 import { useMessages } from '../i18n/index.js'
 import { seatName, sideOf, sideTeam, type Side } from '../lib/seats.js'
-import { sortHand } from '../lib/sort-hand.js'
+import { readSortMode, writeSortMode } from '../lib/preferences.js'
+import { SORT_MODES, sortHand, type SortMode } from '../lib/sort-hand.js'
 
 type Props = {
   view: PlayerView
@@ -71,7 +72,16 @@ export function Table({ view, lobby, onPlay, onNextHand, onRestart, onLeave, sid
     view.you.legalMoves.flatMap((m) => (m.type === 'play' ? [m.cardId] : [])),
   )
   const declare = view.you.legalMoves.find((m) => m.type === 'declare')
-  const sorted = useMemo(() => sortHand(view.you.hand, trump), [view.you.hand, trump])
+  const [sortMode, setSortMode] = useState<SortMode>(readSortMode)
+  const sorted = useMemo(
+    () => sortHand(view.you.hand, trump, sortMode),
+    [view.you.hand, trump, sortMode],
+  )
+  const nextSort = (): void => {
+    const next = SORT_MODES[(SORT_MODES.indexOf(sortMode) + 1) % SORT_MODES.length] ?? 'alternate'
+    setSortMode(next)
+    writeSortMode(next)
+  }
 
   const remaining = useCountdown(view.turnDeadline)
   const isHost = lobby?.hostSeat === me
@@ -174,13 +184,25 @@ export function Table({ view, lobby, onPlay, onNextHand, onRestart, onLeave, sid
             {t.table.declare(view.you.declarable.map((d) => t.declarationName(d.kind)))}
           </button>
         )}
-        <div className="turn-hint" aria-live="polite">
-          {hand.phase === 'playing' &&
-            (myTurn
-              ? t.table.yourTurn
-              : hand.currentSeat !== me
-                ? t.table.waitingFor(name(hand.currentSeat))
-                : '')}
+        <div className="hint-row">
+          <div className="turn-hint" aria-live="polite">
+            {hand.phase === 'playing' &&
+              (myTurn
+                ? t.table.yourTurn
+                : hand.currentSeat !== me
+                  ? t.table.waitingFor(name(hand.currentSeat))
+                  : '')}
+          </div>
+          {view.you.hand.length > 1 && (
+            <button
+              type="button"
+              className="sort-btn"
+              aria-label={t.table.sortBy(t.table.sortModes[sortMode])}
+              onClick={nextSort}
+            >
+              <span aria-hidden="true">⇅</span> {t.table.sortModes[sortMode]}
+            </button>
+          )}
         </div>
         <HandFan
           cards={sorted}

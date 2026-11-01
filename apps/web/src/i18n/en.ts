@@ -120,6 +120,13 @@ export const en: Messages = {
     reserve: (n) => `${n} in reserve`,
     dealer: 'Dealer',
     yourTurn: 'Your turn',
+    sortBy: (mode: string) => `Card order: ${mode}. Tap to change`,
+    sortModes: {
+      alternate: 'Alternating',
+      trumpLast: 'Trump on the right',
+      fixed: 'Fixed order',
+      none: 'Unsorted',
+    },
     waitingFor: (name) => `${name} is thinking…`,
     takerLabel: (name) => `${name} took`,
     vacheLabel: 'Vache: nobody took',

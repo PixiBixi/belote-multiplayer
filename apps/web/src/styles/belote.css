@@ -2614,11 +2614,22 @@ button:focus-visible {
     padding-bottom: max(6px, env(safe-area-inset-bottom));
   }
 
-  .turn-hint {
+  .my-zone .hint-row {
     position: absolute;
-    left: 50%;
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
     bottom: calc(100% + 2px);
-    translate: -50% 0;
+    width: auto;
+  }
+
+  /* Bottom left, beside the fan: my plate holds the left edge and the bid panel the right. */
+  .hint-row .sort-btn {
+    position: absolute;
+    /* Abspos in a grid: the grid area is the containing block, so span the whole row. */
+    grid-column: 1 / -1;
+    left: 0;
+    top: calc(100% + 28px);
+    margin: 0;
   }
 
   .my-zone .bid-panel {
@@ -2682,4 +2693,38 @@ button:focus-visible {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* The hint stays centred; the card order toggle sits at the right end of its row. */
+.hint-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  width: 100%;
+}
+
+.hint-row .turn-hint {
+  grid-column: 2;
+}
+
+.sort-btn {
+  grid-column: 3;
+  justify-self: end;
+  margin-right: max(4px, env(safe-area-inset-right));
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--cream, #f5efe0);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.sort-btn:hover {
+  border-color: var(--gold);
 }

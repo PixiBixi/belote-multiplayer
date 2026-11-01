@@ -110,6 +110,13 @@ export const fr = {
     reserve: (n: number) => `${n} en réserve`,
     dealer: 'Donneur',
     yourTurn: 'À toi de jouer',
+    sortBy: (mode: string) => `Tri des cartes : ${mode}. Toucher pour changer`,
+    sortModes: {
+      alternate: 'Alterné',
+      trumpLast: 'Atout à droite',
+      fixed: 'Ordre fixe',
+      none: 'Sans tri',
+    },
     waitingFor: (name: string) => `${name} réfléchit…`,
     takerLabel: (name: string) => `${name} a pris`,
     vacheLabel: 'Vache : personne n’a pris',
