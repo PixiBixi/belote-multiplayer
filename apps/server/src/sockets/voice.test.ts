@@ -1,4 +1,3 @@
-import { DEFAULT_MATCH_GOAL } from '@belote/protocol'
 import { DEFAULT_TABLE_RULES } from '@belote/engine'
 import { describe, expect, it } from 'vitest'
 import { z, type ZodType } from 'zod'
@@ -16,7 +15,7 @@ type Handler = (payload: unknown, ack: (result: unknown) => void) => void
  * limiter directly. Over a real socket both are private to `registerSocketHandlers`.
  */
 const voiceHarness = () => {
-  const room = new Room('ABCDEF', 42, DEFAULT_MATCH_GOAL, null, DEFAULT_TABLE_RULES)
+  const room = new Room('ABCDEF', null, DEFAULT_TABLE_RULES)
   room.join('Ana', 'socket-0')
   room.join('Ben', 'socket-1')
   const presence: Presence = { room, seat: 0 }

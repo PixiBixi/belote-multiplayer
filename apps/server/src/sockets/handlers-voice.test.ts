@@ -1,4 +1,4 @@
-import { DEFAULT_MATCH_GOAL, type VoicePeer } from '@belote/protocol'
+import type { VoicePeer } from '@belote/protocol'
 import { createServer, type Server as HttpServer } from 'node:http'
 import { io as connect, type Socket } from 'socket.io-client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -76,7 +76,6 @@ const seatTwo = async (): Promise<[Socket, Socket]> => {
   const host = newClient()
   const created = await emit<{ ok: true; roomCode: string } | { ok: false }>(host, 'room:create', {
     playerName: 'Ana',
-    goal: DEFAULT_MATCH_GOAL,
     pace: null,
   })
   if (!created.ok) throw new Error('room:create failed')

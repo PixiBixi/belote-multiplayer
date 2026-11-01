@@ -6,7 +6,9 @@ import {
   roomConfigureSchema,
   roomCreateSchema,
   roomJoinSchema,
+  roomMoveSeatSchema,
   roomRejoinSchema,
+  roomSetSeatSchema,
   type ErrorCode,
   type GameEvent,
 } from '@belote/protocol'
@@ -131,61 +133,46 @@ export function registerSocketHandlers(
     presenceOf: (socketId: string) => presences.get(socketId),
   }
 
-  /** Pushes every connected seat its own redacted view. */
+  /** Pushes every connected human its own redacted view. */
   const broadcastViews = (room: Room): void => {
-    for (let seat = 0; seat < room.memberCount; seat++) {
-      const socketId = room.memberAt(seat)?.socketId
+    for (let seat = 0; seat < room.seatCount; seat++) {
+      const socketId = room.socketAt(seat)
       const view = room.viewFor(seat)
-      if (socketId == null || view === null) continue
+      if (socketId === null || view === null) continue
       io.to(socketId).emit('game:view', view)
     }
   }
 
   const broadcastLobby = (room: Room): void => {
     const view = room.lobbyView()
-    for (let seat = 0; seat < room.memberCount; seat++) {
-      const socketId = room.memberAt(seat)?.socketId
-      if (socketId == null) continue
+    for (let seat = 0; seat < room.seatCount; seat++) {
+      const socketId = room.socketAt(seat)
+      if (socketId === null) continue
       io.to(socketId).emit('room:state', view)
     }
   }
 
-  /**
-   * Restarts whichever clock the room is now owed and pushes the result.
-   *
-   * Called after anything that can change whose turn it is. Both arms are safe to
-   * call unconditionally: each clears itself when the room is not in its state, so
-   * a table with no pace simply ends up with no timers and null deadlines.
-   *
-   * `presence` is for a seat arriving or going without a move being made: all three
-   * clocks keep running unless what they time has itself changed.
-   */
-  const retime = (room: Room, cause: 'move' | 'presence' = 'move'): void => {
-    const afterExpiry = (events: GameEvent[]): void => {
-      if (events.length > 0) broadcastEvents(room, events)
-      // Re-timed before broadcasting, so the deadline every player receives is
-      // already the next seat's rather than the one that just elapsed.
-      retime(room)
-      broadcastViews(room)
-    }
-    if (cause === 'presence') {
-      rooms.keepTurn(room, afterExpiry)
-      rooms.keepNextRound(room, afterExpiry)
-      rooms.keepUnoGrace(room, afterExpiry)
-      return
-    }
-    rooms.armTurn(room, afterExpiry)
-    rooms.armNextRound(room, afterExpiry)
-    /* Third clock, same shape: the seconds a seat has to say UNO after playing down to
-       one card, on a table where nobody is watching for it. Armed here rather than at
-       the one call site that opens a window, because a window also CLOSES on a move
-       somebody else made - a call-out, or the exposed seat's own next turn - and the
-       clock has to go away with it. */
-    rooms.armUnoGrace(room, afterExpiry)
-  }
-
   const broadcastEvents = (room: Room, events: GameEvent[]): void => {
     for (const event of events) io.to(room.code).emit('game:event', event)
+  }
+
+  /** Everything a change owes the table: its events, the lobby state, each seat's view. */
+  const publish = (room: Room, events: GameEvent[]): void => {
+    broadcastEvents(room, events)
+    broadcastLobby(room)
+    broadcastViews(room)
+    // A table with no human left has nobody to play for: bots alone must not run on.
+    rooms.dropIfAbandoned(room)
+  }
+
+  /**
+   * Re-times the room after anything that can change who has to act. Safe to call
+   * unconditionally: the manager keeps the running timer when nothing relevant changed
+   * and clears it when the room owes none. A bot move, a timeout or the next deal that
+   * fires comes back here through `publish`.
+   */
+  const retime = (room: Room): void => {
+    rooms.schedule(room, (events) => publish(room, events))
   }
 
   /**
@@ -194,11 +181,10 @@ export function registerSocketHandlers(
    *
    * Extracted rather than duplicated: `room:leave` did exactly this and `attach` did
    * none of it, which is how a socket could walk to another table and leave its old
-   * seat holding a socket id that would never disconnect again. Two copies of a
-   * seven-step teardown would have drifted; there is one.
+   * seat holding a socket id that would never disconnect again.
    *
-   * No grace timer, deliberately: the seat is given up rather than lost, and nobody is
-   * coming back to it.
+   * No grace timer, deliberately: the seat is given up rather than lost. Mid-game a
+   * normal bot stands in and the session token can still reclaim the seat.
    */
   const release = (socket: TypedSocket): void => {
     const presence = presences.get(socket.id)
@@ -207,20 +193,16 @@ export function registerSocketHandlers(
     leaveVoice(voiceContext, socket)
 
     const { room } = presence
-    const result = room.disconnect(socket.id)
+    const result = room.leave(socket.id)
     presences.delete(socket.id)
     moveLimiter.forget(socket.id)
     chatLimiter.forget(socket.id)
     void socket.leave(room.code)
 
     if (result === null) return
-    room.expireGrace(result.seat)
-    broadcastEvents(room, [...result.events, { type: 'seatLeft', seat: result.seat }])
-    retime(room, 'presence')
-    broadcastLobby(room)
-    // The people still playing need a fresh view too, not just a fresh lobby: a seat
-    // going away can change whose turn it is.
-    broadcastViews(room)
+    rooms.cancelGrace(room, result.seat)
+    retime(room)
+    publish(room, result.events)
   }
 
   /** Takes a seat's old socket off the table: a second tab rejoined as that seat. */
@@ -310,7 +292,7 @@ export function registerSocketHandlers(
         /* Checked after the payload and before the room exists, so a refused burst costs
            nothing and cannot leave a half-created table behind. */
         if (!within(createLimiter, ack)) return
-        const created = rooms.create(data.goal, data.pace, data.rules)
+        const created = rooms.create(data.pace, data.rules)
         if (refused(created, ack)) return
         const room = created.value
         const joined = room.join(data.playerName, socket.id)
@@ -359,10 +341,8 @@ export function registerSocketHandlers(
         rooms.cancelGrace(room, rejoined.value.seat)
         attach(room, rejoined.value.seat)
         ack({ ok: true, seat: rejoined.value.seat })
-        broadcastLobby(room)
-        broadcastEvents(room, [{ type: 'seatReconnected', seat: rejoined.value.seat }])
-        retime(room, 'presence')
-        broadcastViews(room)
+        retime(room)
+        publish(room, [{ type: 'seatReconnected', seat: rejoined.value.seat }])
       })
     })
 
@@ -386,20 +366,10 @@ export function registerSocketHandlers(
     })
 
     /**
-     * The host changing the table from the lobby.
-     *
-     * The guard lives in `Room.configure`, which is checked here - when the event is
-     * handled - and never at render: a host can press Start and toggle a rule in the
-     * same breath, and whichever arrives second must lose.
-     *
-     * `broadcastLobby`, not an ack carrying the new view: the guest watching the host
-     * toggle Jump-in is the entire reason configuration moved into the lobby, and a
-     * change that only refreshed the sender would satisfy a naive test and fail the
-     * feature.
-     *
-     * No `retime`. Nothing here can move a turn - there is no turn - and a pace chosen
-     * in the lobby is a number the deal will read, not a clock. RoomManager arms it at
-     * the deal, as it always has.
+     * The host changing the table from the lobby. The guard lives in the Room, checked
+     * when the event is handled and never at render: a host can press Start and toggle a
+     * rule in the same breath, and whichever arrives second must lose. The result goes
+     * out as a fresh `room:state` to everyone, so guests watch the host change the table.
      */
     socket.on('room:configure', (payload, ack) => {
       attempt(ack, () => {
@@ -412,30 +382,57 @@ export function registerSocketHandlers(
       })
     })
 
+    socket.on('room:setSeat', (payload, ack) => {
+      attempt(ack, () => {
+        const admitted = admit(roomSetSeatSchema, payload, ack, controlLimiter)
+        if (admitted === null) return
+        const { data, presence } = admitted
+        if (refused(presence.room.setSeat(presence.seat, data.seat, data.occupant), ack)) return
+        ack({ ok: true })
+        broadcastLobby(presence.room)
+      })
+    })
+
+    socket.on('room:moveSeat', (payload, ack) => {
+      attempt(ack, () => {
+        const admitted = admit(roomMoveSeatSchema, payload, ack, controlLimiter)
+        if (admitted === null) return
+        const { data, presence } = admitted
+        const moved = presence.room.moveSeat(presence.seat, data.seat)
+        if (refused(moved, ack)) return
+        if (moved.value.seat !== presence.seat) {
+          /* Voice is keyed by seat: leave it under the old one, the client rejoins. */
+          leaveVoice(voiceContext, socket)
+          presences.set(socket.id, { room: presence.room, seat: moved.value.seat })
+        }
+        ack({ ok: true, seat: moved.value.seat })
+        broadcastLobby(presence.room)
+      })
+    })
+
     socket.on('game:start', (payload, ack) => {
       attempt(ack, () => {
         const admitted = admit(emptyPayloadSchema, payload, ack, controlLimiter)
         if (admitted === null) return
         const { presence } = admitted
-        if (refused(presence.room.start(presence.seat), ack)) return
+        const started = presence.room.start(presence.seat, rooms.nextSeed())
+        if (refused(started, ack)) return
         ack({ ok: true })
         retime(presence.room)
-        broadcastLobby(presence.room)
-        broadcastViews(presence.room)
+        publish(presence.room, started.value)
       })
     })
 
-    socket.on('game:nextRound', (payload, ack) => {
+    socket.on('game:nextHand', (payload, ack) => {
       attempt(ack, () => {
         const admitted = admit(emptyPayloadSchema, payload, ack, controlLimiter)
         if (admitted === null) return
         const { presence } = admitted
-        const dealt = presence.room.nextRound(presence.seat, rooms.nextSeed())
+        const dealt = presence.room.nextHand(presence.seat)
         if (refused(dealt, ack)) return
         ack({ ok: true })
-        broadcastEvents(presence.room, dealt.value)
         retime(presence.room)
-        broadcastViews(presence.room)
+        publish(presence.room, dealt.value)
       })
     })
 
@@ -447,10 +444,8 @@ export function registerSocketHandlers(
         const restarted = presence.room.restart(presence.seat, rooms.nextSeed())
         if (refused(restarted, ack)) return
         ack({ ok: true })
-        broadcastEvents(presence.room, restarted.value)
         retime(presence.room)
-        broadcastLobby(presence.room)
-        broadcastViews(presence.room)
+        publish(presence.room, restarted.value)
       })
     })
 
@@ -462,9 +457,8 @@ export function registerSocketHandlers(
         const applied = presence.room.move(presence.seat, data.move)
         if (refused(applied, ack)) return
         ack({ ok: true })
-        broadcastEvents(presence.room, applied.value)
         retime(presence.room)
-        broadcastViews(presence.room)
+        publish(presence.room, applied.value)
       })
     })
 
@@ -473,7 +467,7 @@ export function registerSocketHandlers(
         const admitted = admit(chatSendSchema, payload, ack, chatLimiter)
         if (admitted === null) return
         const { data, presence } = admitted
-        const name = presence.room.memberAt(presence.seat)?.name ?? 'unknown'
+        const name = presence.room.nameAt(presence.seat) ?? 'unknown'
         ack({ ok: true })
         io.to(presence.room.code).emit('chat:message', {
           seat: presence.seat,
@@ -504,18 +498,12 @@ export function registerSocketHandlers(
         const result = room.disconnect(socket.id)
         if (result === null) return
 
-        broadcastEvents(room, result.events)
-        // A disconnection moves the turn past the seat that left, so the clock
-        // now belongs to somebody else.
-        retime(room, 'presence')
-        broadcastLobby(room)
-        broadcastViews(room)
-
+        // The seat is kept; a turn it holds is played by a bot after a short grace.
+        retime(room)
+        publish(room, result.events)
         rooms.scheduleGrace(room, result.seat, (events) => {
-          broadcastEvents(room, events)
-          retime(room, 'presence')
-          broadcastLobby(room)
-          broadcastViews(room)
+          retime(room)
+          publish(room, events)
         })
       })
     })

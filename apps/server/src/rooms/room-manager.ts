@@ -1,10 +1,9 @@
-import type { MatchGoal, TableRules } from '@belote/engine'
 import { randomInt } from 'node:crypto'
-import { DEFAULT_TABLE_RULES, err, ok, type Result } from '@belote/engine'
+import { DEFAULT_TABLE_RULES, err, ok, type Result, type TableRules } from '@belote/engine'
 import {
-  BETWEEN_ROUNDS_SECONDS,
-  UNO_GRACE_SECONDS,
-  MIN_SEATS,
+  BETWEEN_HANDS_SECONDS,
+  BOT_DELAY_MS,
+  TRICK_PAUSE_MS,
   type ErrorCode,
   type GameEvent,
   type MatchPace,
@@ -26,6 +25,9 @@ type RoomManagerOptions = {
   now?: () => number
 }
 
+/** How long a disconnected human may sit on their turn before a normal bot plays it. */
+export const ABSENT_TURN_GRACE_MS = 15_000
+
 const defaultTimers: Timers = {
   setTimeout: (fn, ms) => setTimeout(fn, ms),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -38,11 +40,11 @@ const defaultTimers: Timers = {
 export class RoomManager {
   private readonly rooms = new Map<string, Room>()
   private readonly graceTimers = new Map<string, unknown>()
-  /** The seat a clock was armed for, so a presence change can tell it is still that turn. */
-  private readonly turnTimers = new Map<string, { handle: unknown; seat: number | null }>()
-  private readonly roundTimers = new Map<string, unknown>()
-  /** With the seat it was armed for, so a presence change can tell it is the same window. */
-  private readonly unoTimers = new Map<string, { handle: unknown; seat: number | null }>()
+  /** The one timer a room owns, with what it was armed for so a presence change can tell. */
+  private readonly autoTimers = new Map<
+    string,
+    { handle: unknown; counter: number; kind: string; seat: number | null }
+  >()
   /** When a room last became empty, so purge can tell "gone" from "gone for good". */
   private readonly emptySince = new Map<string, number>()
   /** Told the code of each purged room, so the socket layer can drop what it keeps per room. */
@@ -65,11 +67,7 @@ export class RoomManager {
     return this.rooms.size
   }
 
-  create(
-    goal: MatchGoal,
-    pace: MatchPace = null,
-    rules: TableRules = DEFAULT_TABLE_RULES,
-  ): Result<Room, ErrorCode> {
+  create(pace: MatchPace = null, rules: TableRules = DEFAULT_TABLE_RULES): Result<Room, ErrorCode> {
     if (this.rooms.size >= this.maxRooms) return err('server_full')
 
     // Retry on the astronomically unlikely collision rather than overwrite.
@@ -79,12 +77,12 @@ export class RoomManager {
     }
     if (this.rooms.has(code)) return err('server_full')
 
-    const room = new Room(code, this.seedSource(), goal, pace, rules)
+    const room = new Room(code, pace, rules)
     this.rooms.set(code, room)
     return ok(room)
   }
 
-  /** The seed source, so a restart can draw one without owning randomness. */
+  /** The seed source, so a start or restart can draw one without owning randomness. */
   nextSeed(): number {
     return this.seedSource()
   }
@@ -116,153 +114,93 @@ export class RoomManager {
   }
 
   /**
-   * Re-arms the clock for whoever is now on turn, and writes the deadline into the
-   * room so every view agrees on it.
+   * Arms the one timer the room is owed, and writes its deadlines into the room so
+   * every view agrees on them. Idempotent for the same situation: a presence change or
+   * a repeated call keeps the running timer, so a rejoin loop cannot stall the table.
    *
-   * Called after anything that can change whose turn it is. Idempotent by design:
-   * arming twice for the same turn simply restarts it, which is what a re-deal
-   * wants. A reconnection does not, and goes through keepTurn instead.
+   * What it times depends on who has to act: a bot (after its thinking delay, plus the
+   * trick pause), a human on a table with a clock (their turn), an absent human (a short
+   * grace, then a normal bot plays), or the pause before the next hand deals itself.
+   * `notify` receives the events of whatever fired, after the room was re-timed, so the
+   * deadlines in the views it sends already belong to the next situation.
    */
-  armTurn(room: Room, onExpire: (events: GameEvent[]) => void): void {
-    /* One exception to the idempotence above: a voluntary draw on a table that plays the
-       drawn card does not end the turn, so restarting the clock for it would hand the seat
-       a fresh allowance for having drawn. The countdown keeps running through the
-       decision, which is what the player watching it expects.
-
-       Only while a timer is really live. After one has fired the map no longer holds it,
-       so a forced draw that lands in the sub-state still arms a fresh clock - and has to,
-       or the deadline would sit in the past and nothing would ever fire against that seat
-       again. */
-    if (room.decidingOnDrawnCard && this.turnTimers.has(room.code)) return
-
-    this.cancelTurn(room)
-
-    const seconds = room.turnSeconds
-    /* activeMemberCount, not just awaitingMove. With every seat gone the clock
-       would expire, find no legal move, change nothing, and be armed again by the
-       caller - forever, against a room nobody is sitting at. */
-    if (seconds === null || !room.awaitingMove || room.activeMemberCount() === 0) {
-      room.setTurnDeadline(null)
+  schedule(room: Room, notify: (events: GameEvent[]) => void): void {
+    const plan = room.automation()
+    const seat = 'seat' in plan ? plan.seat : null
+    const armed = this.autoTimers.get(room.code)
+    if (
+      armed !== undefined &&
+      armed.counter === room.moveCounter &&
+      armed.kind === plan.kind &&
+      armed.seat === seat
+    ) {
       return
     }
+    this.cancelAuto(room)
 
-    const deadline = this.now() + seconds * 1000
-    room.setTurnDeadline(deadline)
-    const handle = this.timers.setTimeout(() => {
-      this.turnTimers.delete(room.code)
-      /* Deliberately does NOT re-arm itself. The caller re-times the room before
-         it broadcasts, so exactly one place decides when a clock starts and the
-         deadline in the views being sent already belongs to the next seat. */
-      onExpire(room.forceTurnMove())
-    }, seconds * 1000)
-    this.turnTimers.set(room.code, { handle, seat: room.currentSeat })
+    const refire =
+      (run: () => GameEvent[]): (() => void) =>
+      () => {
+        this.autoTimers.delete(room.code)
+        room.setTurnDeadline(null)
+        room.setNextHandDeadline(null)
+        const events = run()
+        this.schedule(room, notify)
+        notify(events)
+      }
+
+    let ms: number
+    let run: () => GameEvent[]
+    switch (plan.kind) {
+      case 'none':
+        return
+      case 'bot':
+        ms = BOT_DELAY_MS + (room.trickJustCompleted ? TRICK_PAUSE_MS : 0)
+        run = () => room.botStep()
+        break
+      case 'absent':
+        ms = Math.min(ABSENT_TURN_GRACE_MS, this.gracePeriodMs)
+        run = () => room.botStep()
+        break
+      case 'human': {
+        ms = (room.turnSeconds ?? 0) * 1000
+        room.setTurnDeadline(this.now() + ms)
+        run = () => room.forceTurnMove()
+        break
+      }
+      case 'hand':
+        ms = BETWEEN_HANDS_SECONDS * 1000
+        room.setNextHandDeadline(this.now() + ms)
+        run = () => room.dealNextHandAutomatically()
+        break
+    }
+    const handle = this.timers.setTimeout(refire(run), ms)
+    this.autoTimers.set(room.code, { handle, counter: room.moveCounter, kind: plan.kind, seat })
   }
 
-  /**
-   * armTurn for a presence change - a rejoin, a disconnect, a grace expiring - where
-   * no move was made. Keeps the running clock while the seat on turn is the one it was
-   * armed for: re-arming there let that seat stall the table by re-emitting a rejoin.
-   */
-  keepTurn(room: Room, onExpire: (events: GameEvent[]) => void): void {
-    const armed = this.turnTimers.get(room.code)
-    const sameTurn = armed !== undefined && armed.seat === room.currentSeat
-    if (sameTurn && room.awaitingMove && room.activeMemberCount() > 0) return
-    this.armTurn(room, onExpire)
-  }
-
-  /** armNextRound for a presence change: a rejoin loop must not hold the next deal back. */
-  keepNextRound(room: Room, onExpire: (events: GameEvent[]) => void): void {
-    const running = this.roundTimers.has(room.code)
-    const due =
-      room.turnSeconds !== null && room.betweenRounds && room.activeMemberCount() >= MIN_SEATS
-    if (running && due) return
-    this.armNextRound(room, onExpire)
-  }
-
-  /** armUnoGrace for a presence change: a rejoin loop must not keep an exposed seat safe. */
-  keepUnoGrace(room: Room, onExpire: (events: GameEvent[]) => void): void {
-    const armed = this.unoTimers.get(room.code)
-    if (armed !== undefined && !room.callOutsAllowed && armed.seat === room.exposedSeat()) return
-    this.armUnoGrace(room, onExpire)
-  }
-
-  cancelTurn(room: Room): void {
-    const armed = this.turnTimers.get(room.code)
+  cancelAuto(room: Room): void {
+    const armed = this.autoTimers.get(room.code)
     if (armed !== undefined) {
       this.timers.clearTimeout(armed.handle)
-      this.turnTimers.delete(room.code)
+      this.autoTimers.delete(room.code)
     }
     room.setTurnDeadline(null)
+    room.setNextHandDeadline(null)
   }
 
-  /**
-   * Deals the next round on its own after a short pause, so a fast match does not
-   * stall on the host clicking a button. Only ever armed on a table with a clock;
-   * everywhere else the host still decides when to move on.
-   */
-  armNextRound(room: Room, onExpire: (events: GameEvent[]) => void): void {
-    this.cancelNextRound(room)
-    /* The dealing guard also requires two active members, and this one used not
-       to. A round ending with one player left made the deal fail, changed nothing
-       about the room, and the caller armed it again - every five seconds for the
-       life of the process, pushing a countdown that could never resolve. */
-    if (room.turnSeconds === null || !room.betweenRounds || room.activeMemberCount() < MIN_SEATS) {
-      room.setNextRoundDeadline(null)
-      return
-    }
-
-    const ms = BETWEEN_ROUNDS_SECONDS * 1000
-    room.setNextRoundDeadline(this.now() + ms)
-    const handle = this.timers.setTimeout(() => {
-      this.roundTimers.delete(room.code)
-      room.setNextRoundDeadline(null)
-      const dealt = room.dealNextRoundAutomatically(this.seedSource())
-      onExpire(dealt)
-    }, ms)
-    this.roundTimers.set(room.code, handle)
+  /** Removes a room nobody can come back to (no human seat left). True when it was dropped. */
+  dropIfAbandoned(room: Room): boolean {
+    if (!room.abandoned || this.rooms.get(room.code) !== room) return false
+    this.drop(room)
+    return true
   }
 
-  /**
-   * The three seconds a seat has to say UNO after playing down to one card.
-   *
-   * Only on a table WITHOUT call-outs, which is the whole distinction between the two:
-   * there an opponent shuts the window and no deadline is wanted, here nobody is watching
-   * so a clock has to. Re-armed from scratch on every move, like the turn clock, so the
-   * window that is running always belongs to the seat currently exposed.
-   *
-   * The penalty used to be charged by the reducer the instant the card left the hand,
-   * which made the plain table the harsher of the two for no reason anybody chose: the
-   * call was legal a moment too late to make.
-   */
-  armUnoGrace(room: Room, onExpire: (events: GameEvent[]) => void): void {
-    this.cancelUnoGrace(room)
-    if (room.callOutsAllowed || room.exposedSeat() === null) return
-
-    const handle = this.timers.setTimeout(() => {
-      this.unoTimers.delete(room.code)
-      /* Re-checked rather than trusted: `chargeForgottenUno` is a no-op when nobody is
-         exposed any more, which is what makes a call arriving in the last millisecond
-         safe against a timer already on its way. */
-      onExpire(room.chargeForgottenUno())
-    }, UNO_GRACE_SECONDS * 1000)
-    this.unoTimers.set(room.code, { handle, seat: room.exposedSeat() })
-  }
-
-  cancelUnoGrace(room: Room): void {
-    const armed = this.unoTimers.get(room.code)
-    if (armed !== undefined) {
-      this.timers.clearTimeout(armed.handle)
-      this.unoTimers.delete(room.code)
-    }
-  }
-
-  cancelNextRound(room: Room): void {
-    const handle = this.roundTimers.get(room.code)
-    if (handle !== undefined) {
-      this.timers.clearTimeout(handle)
-      this.roundTimers.delete(room.code)
-    }
-    room.setNextRoundDeadline(null)
+  private drop(room: Room): void {
+    for (let seat = 0; seat < room.seatCount; seat++) this.cancelGrace(room, seat)
+    this.cancelAuto(room)
+    this.rooms.delete(room.code)
+    this.emptySince.delete(room.code)
+    for (const listener of this.purgeListeners) listener(room.code)
   }
 
   /**
@@ -291,13 +229,7 @@ export class RoomManager {
         this.emptySince.set(code, since)
         if (this.now() - since < this.gracePeriodMs) continue
       }
-      for (let seat = 0; seat < room.memberCount; seat++) this.cancelGrace(room, seat)
-      this.cancelTurn(room)
-      this.cancelNextRound(room)
-      this.cancelUnoGrace(room)
-      this.rooms.delete(code)
-      this.emptySince.delete(code)
-      for (const listener of this.purgeListeners) listener(code)
+      this.drop(room)
       removed++
     }
     return removed

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Authoritative UNO game server",
+  "description": "Authoritative belote game server",
   "engines": {
     "node": ">=22"
   },

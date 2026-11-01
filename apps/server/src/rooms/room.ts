@@ -1,46 +1,35 @@
 import { randomUUID } from 'node:crypto'
 import {
   DEFAULT_TABLE_RULES,
-  activeCount,
-  UNO_PENALTY,
   applyMove,
-  penaliseForgottenUno,
-  applyRound,
+  botMove,
+  createGame,
   err,
-  legalMoves,
-  initGame,
-  markSeatLeft,
-  matchWinners,
+  nextHand,
   ok,
-  roundPoints,
-  setSeatStatus,
-  skipDisconnectedTurn,
-  startMatch,
-  type Card,
+  type BotLevel,
   type GameState,
-  type MatchGoal,
-  type MatchState,
   type Move,
   type Result,
-  type SeatStatus,
   type TableRules,
 } from '@belote/engine'
 import {
-  MAX_SEATS,
-  MIN_SEATS,
+  SEAT_COUNT,
+  buildPlayerView,
   type ErrorCode,
   type GameEvent,
   type LobbyView,
   type MatchPace,
-  type MatchProgress,
   type PlayerView,
+  type SeatInfo,
+  type SeatOccupant,
+  type SeatStatus,
   type TableConfiguration,
 } from '@belote/protocol'
-import { redactFor } from '../views.js'
-import { emptyStatsFor, tally } from './stats.js'
+import { diffEvents } from './game-events.js'
 
-type Member = {
-  seat: number
+type Human = {
+  kind: 'human'
   name: string
   /** The player's identity across reconnections. Never the socket id. */
   sessionToken: string
@@ -48,171 +37,67 @@ type Member = {
   status: SeatStatus
 }
 
-type RoomPhase = 'lobby' | 'playing' | 'finished'
+type Bot = {
+  kind: 'bot'
+  name: string
+  level: BotLevel
+  /** Set when the bot holds a human's seat: their name, and the token that reclaims it. */
+  standIn: { name: string; sessionToken: string } | null
+}
+
+type Slot = Human | Bot | { kind: 'empty' }
+
+/** What the clock owner has to do next; see RoomManager.schedule. */
+export type Automation =
+  | { kind: 'none' }
+  | { kind: 'bot'; seat: number }
+  | { kind: 'absent'; seat: number }
+  | { kind: 'human'; seat: number }
+  | { kind: 'hand' }
+
+const BOT_NAMES = [
+  'Marcel',
+  'Josette',
+  'Gaston',
+  'Odette',
+  'Lucien',
+  'Colette',
+  'Raymond',
+  'Simone',
+]
 
 /**
  * One room: a lobby, then a game. Deliberately synchronous and timer-free - it
  * knows nothing of socket.io or setTimeout, which is what makes the whole
- * lifecycle testable without a clock or a network. Grace periods live in
- * RoomManager, which calls expireGrace when one elapses.
+ * lifecycle testable without a clock or a network. Timers live in RoomManager,
+ * which calls back into the automatic entry points (botStep, forceTurnMove,
+ * dealNextHandAutomatically, expireGrace) when one elapses.
+ *
+ * Member seat number == engine seat index, always: slots are the four seats.
  */
 export class Room {
   readonly code: string
-  private readonly seed: number
-  private readonly members: Member[] = []
+  private readonly slots: Slot[] = Array.from({ length: SEAT_COUNT }, () => ({ kind: 'empty' }))
   private host = 0
   private game: GameState | null = null
-  /* Settable from the lobby by the host and frozen by the first deal of the match -
-     see configure(). Not readonly any more, and not mutable for long: changing any of
-     the three mid-match would rewrite a contest that has already been partly played
-     under the old ones. */
-  private goal: MatchGoal
   private pace: MatchPace
   private rules: TableRules
-  /* Held, never computed. Room owns no clock - RoomManager hands these in, the
-     same way it hands in a seed, so the whole lifecycle stays testable without
-     time passing. */
+  /* Held, never computed: RoomManager hands the deadlines in, so no clock is read here. */
   private turnDeadline: number | null = null
-  private nextRoundDeadline: number | null = null
-  /**
-   * Who plays first on the next deal.
-   *
-   * The host opens the match; after that, whoever won the last round opens the next one.
-   * `initGame` used to set seat 0 unconditionally and seat 0 is whoever created the table,
-   * so the host opened every round of every match - measured at 5000 deals out of 5000.
-   *
-   * Held here rather than derived at deal time from `game.winner`, because a restart deals
-   * a NEW match off a finished game: reading the old winner there would carry a result the
-   * table has just abandoned into a match that has not started.
-   */
-  private opensNextDeal = 0
-  private stats = emptyStatsFor(0)
-  /** Null until the first round is dealt; the goal is known from creation. */
-  private match: MatchState | null = null
+  private nextHandDeadline: number | null = null
+  /** Bumped by every change of the game, so a timer can tell the turn it was armed for. */
+  private counter = 0
+  private completedTrick = false
 
-  constructor(
-    code: string,
-    seed: number,
-    goal: MatchGoal,
-    pace: MatchPace = null,
-    rules: TableRules = DEFAULT_TABLE_RULES,
-  ) {
+  constructor(code: string, pace: MatchPace = null, rules: TableRules = DEFAULT_TABLE_RULES) {
     this.code = code
-    this.seed = seed
-    this.goal = goal
     this.pace = pace
     this.rules = rules
   }
 
-  /**
-   * Every event this room reports leaves through here, so the match tally is
-   * taken in one place rather than at each of the eight paths that produce one.
-   * Miss a path and the statistics quietly under-count; a test cross-checks the
-   * totals against the events actually returned, so missing one fails loudly.
-   */
-  private record(events: GameEvent[]): GameEvent[] {
-    if (events.length > 0) this.stats = tally(this.stats, events)
-    return events
-  }
+  /* ---------- reads ---------- */
 
-  /** Null on a table with no clock, which is what makes the rest opt-in. */
-  get turnSeconds(): number | null {
-    return this.pace?.turnSeconds ?? null
-  }
-
-  /** True while somebody could still be timed out. */
-  get awaitingMove(): boolean {
-    return this.game !== null && this.game.phase === 'playing'
-  }
-
-  get currentSeat(): number | null {
-    return this.game?.currentSeat ?? null
-  }
-
-  /**
-   * True while the seat on turn is deciding what to do with a card it has just drawn.
-   *
-   * Read by RoomManager and nothing else: a voluntary draw does not end the turn on a table
-   * that plays the drawn card, so the turn clock must not restart for it. The seat gets the
-   * time it had left to play, not a fresh allowance for having drawn.
-   */
-  get decidingOnDrawnCard(): boolean {
-    return this.game?.drawnCard != null
-  }
-
-  /**
-   * Whether the table shuts its UNO windows by hand.
-   *
-   * Named for what it decides rather than after the flag: `RoomManager` arms the grace
-   * clock only where nobody is watching, and reading `rules.liar` there would put the
-   * word "liar" in a file whose job is timers.
-   */
-  get callOutsAllowed(): boolean {
-    return this.rules.liar
-  }
-
-  /**
-   * The seat holding one card it never called UNO on, or null when nobody is.
-   *
-   * Exposed as a seat rather than a boolean because the caller has to name it: the
-   * grace clock charges THAT seat, and a room only ever has one window open at a time -
-   * the reducer shuts the old one before it may open a new one.
-   */
-  exposedSeat(): number | null {
-    return this.game?.seats.find((seat) => seat.vulnerable)?.index ?? null
-  }
-
-  /**
-   * Charges the seat that let the window run out, and reports it.
-   *
-   * Called by the grace clock in `RoomManager`, never from a move: `Room` is synchronous
-   * and holds no timers, so the deadline lives outside and only the consequence lives
-   * here. Silent when nobody is exposed any more, which is the normal case - the call
-   * arrived, or a call-out did, or the seat's next turn shut the window first.
-   */
-  chargeForgottenUno(): GameEvent[] {
-    const before = this.game
-    if (before === null || before.phase !== 'playing') return []
-    const seat = this.exposedSeat()
-    if (seat === null) return []
-
-    const after = penaliseForgottenUno(before, seat)
-    this.game = after
-    return this.record([{ type: 'unoPenalty', seat, count: UNO_PENALTY }])
-  }
-
-  /** A round has ended, the match has not, so another deal is due. */
-  get betweenRounds(): boolean {
-    return this.game !== null && this.game.phase === 'finished' && !this.matchOver
-  }
-
-  /**
-   * The clock dealing the next round rather than the host.
-   *
-   * Distinct from nextRound(): no seat asked for this, so there is no host to
-   * check, and it reports nothing when the table can no longer deal - everybody
-   * having left during the pause is an ordinary way for a fast match to end.
-   */
-  dealNextRoundAutomatically(nextSeed: number): GameEvent[] {
-    if (this.game === null || this.match === null) return []
-    if (this.game.phase !== 'finished' || this.matchOver) return []
-
-    const dealt = this.dealRound(nextSeed)
-    if (!dealt.okay) return []
-
-    this.game = dealt.value
-    return this.record([{ type: 'roundStarted', round: this.match.round }])
-  }
-
-  setTurnDeadline(at: number | null): void {
-    this.turnDeadline = at
-  }
-
-  setNextRoundDeadline(at: number | null): void {
-    this.nextRoundDeadline = at
-  }
-
-  get phase(): RoomPhase {
+  get phase(): 'lobby' | 'playing' | 'finished' {
     if (this.game === null) return 'lobby'
     return this.game.phase === 'finished' ? 'finished' : 'playing'
   }
@@ -221,329 +106,313 @@ export class Room {
     return this.host
   }
 
-  get memberCount(): number {
-    return this.members.length
+  get turnSeconds(): number | null {
+    return this.pace?.turnSeconds ?? null
   }
 
-  join(name: string, socketId: string): Result<{ seat: number; sessionToken: string }, ErrorCode> {
-    if (this.phase !== 'lobby') return err('game_already_started')
-    // Idempotent per socket: a double tap otherwise seats a ghost that never disconnects.
-    const already = this.members.find((m) => m.socketId === socketId)
-    if (already !== undefined) return ok({ seat: already.seat, sessionToken: already.sessionToken })
-
-    /* A seat left in the lobby is handed on rather than kept: nothing has been dealt or
-       scored, so seat == engine index still holds, and keeping it would make three
-       departures fill the table. */
-    const vacant = this.members.find((m) => m.status === 'left')
-    if (vacant === undefined && this.members.length >= MAX_SEATS) return err('room_full')
-
-    const member: Member = {
-      seat: vacant?.seat ?? this.members.length,
-      name,
-      sessionToken: randomUUID(),
-      socketId,
-      status: 'active',
-    }
-    this.members[member.seat] = member
-    return ok({ seat: member.seat, sessionToken: member.sessionToken })
+  get moveCounter(): number {
+    return this.counter
   }
 
-  memberAt(seat: number): Member | null {
-    return this.members[seat] ?? null
+  /** True when the move that was just applied completed a trick, which the table should see. */
+  get trickJustCompleted(): boolean {
+    return this.completedTrick
+  }
+
+  setTurnDeadline(at: number | null): void {
+    this.turnDeadline = at
+  }
+
+  setNextHandDeadline(at: number | null): void {
+    this.nextHandDeadline = at
+  }
+
+  get seatCount(): number {
+    return SEAT_COUNT
+  }
+
+  nameAt(seat: number): string | null {
+    const slot = this.slots[seat]
+    return slot !== undefined && slot.kind !== 'empty' ? slot.name : null
+  }
+
+  /** The socket attached to a human seat, null for a bot, an empty seat or an absent human. */
+  socketAt(seat: number): string | null {
+    const slot = this.slots[seat]
+    return slot?.kind === 'human' ? slot.socketId : null
   }
 
   seatOfSocket(socketId: string): number | null {
-    return this.members.find((m) => m.socketId === socketId)?.seat ?? null
+    const index = this.slots.findIndex((s) => s.kind === 'human' && s.socketId === socketId)
+    return index === -1 ? null : index
   }
 
+  /** No socket is attached right now, which is also true of a table of players mid-reload. */
   isEmpty(): boolean {
-    return this.members.every((m) => m.socketId === null)
+    return this.slots.every((s) => s.kind !== 'human' || s.socketId === null)
   }
 
-  /**
-   * Nobody could come back even if they tried: every member has left for good, or
-   * nobody ever sat down. Distinct from isEmpty(), which is merely "no sockets
-   * attached right now" and is also true of a table whose players are mid-reload.
-   */
+  /** No human could ever come back: nobody sits here, or only bots (stand-ins included). */
   get abandoned(): boolean {
-    // `every` on no members is true, which is the right answer for a room created
-    // and never joined.
-    return this.members.every((member) => member.status === 'left')
+    return this.humanSeats().length === 0
   }
 
-  activeMemberCount(): number {
-    return this.members.filter((m) => m.status === 'active').length
+  statusAt(seat: number): SeatStatus | null {
+    const slot = this.slots[seat]
+    return slot?.kind === 'human' ? slot.status : null
   }
 
-  /**
-   * Whether the host may still change the goal, the pace or the rules.
-   *
-   * Derived from the match having begun, deliberately not from `canStart`: that reports
-   * how many seats are filled, and a room can be un-startable while already holding a
-   * dealt round and a score - somebody left mid-match. Gating on it would reopen the
-   * rules at exactly the moment they must not move.
-   *
-   * `match` rather than `game`: the lock is the first deal of the MATCH, not of each
-   * round, because a match spans rounds and carries a score.
-   */
+  private humanSeats(): number[] {
+    return this.slots.flatMap((s, i) => (s.kind === 'human' ? [i] : []))
+  }
+
+  seatInfos(): SeatInfo[] {
+    return this.slots.map((s, seat): SeatInfo => {
+      if (s.kind === 'human') return { seat, kind: 'human', name: s.name, status: s.status }
+      if (s.kind === 'bot') {
+        return {
+          seat,
+          kind: 'bot',
+          name: s.name,
+          level: s.level,
+          standingInFor: s.standIn?.name ?? null,
+        }
+      }
+      return { seat, kind: 'empty' }
+    })
+  }
+
+  get canStart(): boolean {
+    return this.slots.every((s) => s.kind !== 'empty')
+  }
+
   get configurable(): boolean {
-    return this.match === null
-  }
-
-  /**
-   * Changes the table before it is dealt. The host's job, and only theirs.
-   *
-   * Partial by design: a field absent from `changes` is left alone, so toggling one rule
-   * cannot write back a goal the client read a moment earlier. `pace` distinguishes
-   * absent from null - null takes the clock off the table.
-   *
-   * Reports no event. There is no narrative feed in the lobby and nothing here belongs
-   * in the match statistics; the result reaches players as a fresh `room:state`, which
-   * carries the whole configuration anyway and therefore covers a reconnection too.
-   */
-  configure(bySeat: number, changes: TableConfiguration): Result<GameEvent[], ErrorCode> {
-    if (!this.configurable) return err('game_already_started')
-    if (bySeat !== this.host) return err('not_host')
-
-    if (changes.goal !== undefined) this.goal = changes.goal
-    if (changes.pace !== undefined) this.pace = changes.pace
-    if (changes.rules !== undefined) this.rules = changes.rules
-    return ok([])
+    return this.game === null
   }
 
   lobbyView(): LobbyView {
     return {
       roomCode: this.code,
       hostSeat: this.host,
-      seats: this.members.map((m) => ({ seat: m.seat, name: m.name, status: m.status })),
-      canStart: this.activeMemberCount() >= MIN_SEATS,
-      goal: this.goal,
+      seats: this.seatInfos(),
+      canStart: this.canStart,
       pace: this.pace,
       rules: this.rules,
       configurable: this.configurable,
     }
   }
 
-  /** True once somebody has met the goal, which is when a new match is the only move. */
-  get matchOver(): boolean {
-    return this.match !== null && matchWinners(this.match) !== null
-  }
-
-  private matchProgress(): MatchProgress {
-    const match = this.match ?? startMatch(this.goal, this.members.length)
-    return {
-      goal: match.goal,
-      scores: [...match.scores],
-      round: match.round,
-      winners: matchWinners(match),
-      stats: this.stats.map((seat) => ({ ...seat })),
-    }
-  }
-
-  /**
-   * Deals a round to every member seat, active or not.
-   *
-   * Dealing only to the active members is what the first version did, and it made
-   * an engine seat index and a member seat index different numbers the moment
-   * anybody was absent at deal time. viewFor() indexes the engine by member seat,
-   * so the highest-numbered player fell off the end of the seat array and received
-   * no view of the game at all - present, holding cards, looking at nothing.
-   *
-   * Absent seats are then reconciled: a player gone for good has their hand
-   * returned to the pile, which both keeps the 108-card invariant and means they
-   * score nothing for the round. Someone merely disconnected keeps their hand,
-   * because the grace period may still bring them back to it.
-   */
-  private dealRound(seed: number): Result<GameState, ErrorCode> {
-    const active = this.members.filter((m) => m.status === 'active')
-    if (active.length < MIN_SEATS) return err('too_few_players')
-
-    const init = initGame({
-      names: this.members.map((m) => m.name),
-      seed,
-      rules: this.rules,
-      firstSeat: this.opensNextDeal,
+  viewFor(seat: number): PlayerView | null {
+    if (this.game === null) return null
+    return buildPlayerView(this.game, seat, this.seatInfos(), {
+      turnDeadline: this.turnDeadline,
+      nextHandDeadline: this.nextHandDeadline,
     })
-    if (!init.okay) return err('too_few_players')
-
-    let game = init.value
-    for (const member of this.members) {
-      if (member.status === 'active') continue
-      game =
-        member.status === 'left'
-          ? markSeatLeft(game, member.seat)
-          : setSeatStatus(game, member.seat, 'disconnected')
-    }
-    // The opening seat may be one of the absent ones, exactly as seat 0 could be.
-    return ok(skipDisconnectedTurn(game))
   }
 
-  /**
-   * Settles a round that has just ended and reports it. Lives here rather than in
-   * diffEvents because only the Room knows the standings - a pure diff of two game
-   * states cannot say what the round paid out.
-   */
-  private settleRound(before: GameState, after: GameState): GameEvent[] {
-    if (after.phase !== 'finished' || before.phase === 'finished') return []
-    if (this.match === null) return []
-
-    /* Winning earns the first move of the next round. An abandoned round pays out nothing
-       and nobody earned it, so the open stays where it was rather than moving to a seat
-       that did not win. */
-    if (after.winner !== null) this.opensNextDeal = after.winner
-
-    const awarded = roundPoints(after)
-    this.match = applyRound(this.match, after)
-
-    const events: GameEvent[] = [
-      { type: 'roundEnded', winner: after.winner, awarded, scores: [...this.match.scores] },
-    ]
-    const winners = matchWinners(this.match)
-    if (winners !== null) {
-      events.push({ type: 'matchEnded', winners, scores: [...this.match.scores] })
+  /** Who has to act next, so RoomManager can arm exactly one timer for it. */
+  automation(): Automation {
+    const game = this.game
+    if (game === null || game.phase === 'finished') return { kind: 'none' }
+    if (game.hand.phase === 'done') return { kind: 'hand' }
+    const seat = game.hand.currentSeat
+    const slot = this.slots[seat]
+    if (slot?.kind === 'bot') return { kind: 'bot', seat }
+    if (slot?.kind === 'human') {
+      if (slot.status === 'disconnected') return { kind: 'absent', seat }
+      return this.pace === null ? { kind: 'none' } : { kind: 'human', seat }
     }
-    return events
+    return { kind: 'none' }
   }
 
-  start(bySeat: number): Result<GameEvent[], ErrorCode> {
-    if (this.game !== null) return err('game_already_started')
+  /* ---------- lobby ---------- */
+
+  join(name: string, socketId: string): Result<{ seat: number; sessionToken: string }, ErrorCode> {
+    if (this.phase !== 'lobby') return err('game_already_started')
+    // Idempotent per socket: a double tap otherwise seats a ghost that never disconnects.
+    const already = this.seatOfSocket(socketId)
+    const existing = already === null ? undefined : this.slots[already]
+    if (already !== null && existing?.kind === 'human') {
+      return ok({ seat: already, sessionToken: existing.sessionToken })
+    }
+
+    const seat = this.slots.findIndex((s) => s.kind === 'empty')
+    if (seat === -1) return err('room_full')
+    const member: Human = {
+      kind: 'human',
+      name,
+      sessionToken: randomUUID(),
+      socketId,
+      status: 'active',
+    }
+    this.slots[seat] = member
+    if (this.humanSeats().length === 1) this.host = seat
+    return ok({ seat, sessionToken: member.sessionToken })
+  }
+
+  configure(bySeat: number, changes: TableConfiguration): Result<GameEvent[], ErrorCode> {
+    if (!this.configurable) return err('game_already_started')
     if (bySeat !== this.host) return err('not_host')
-
-    this.opensNextDeal = this.host
-    const dealt = this.dealRound(this.seed)
-    if (!dealt.okay) return err(dealt.error)
-
-    this.game = dealt.value
-    this.match = startMatch(this.goal, this.members.length)
-    this.stats = emptyStatsFor(this.members.length)
+    if (changes.pace !== undefined) this.pace = changes.pace
+    if (changes.rules !== undefined) this.rules = changes.rules
     return ok([])
   }
 
-  /**
-   * The next round of the same match: the standings carry over. The seed arrives
-   * as a parameter for the same reason restart's does - a Room that draws its own
-   * randomness stops being reproducible.
-   */
-  nextRound(bySeat: number, nextSeed: number): Result<GameEvent[], ErrorCode> {
-    if (this.game === null || this.match === null) return err('game_not_started')
-    if (this.game.phase !== 'finished') return err('round_in_progress')
-    if (this.matchOver) return err('match_over')
+  setSeat(bySeat: number, seat: number, occupant: SeatOccupant): Result<GameEvent[], ErrorCode> {
+    if (!this.configurable) return err('game_already_started')
     if (bySeat !== this.host) return err('not_host')
-
-    const dealt = this.dealRound(nextSeed)
-    if (!dealt.okay) return err(dealt.error)
-
-    this.game = dealt.value
-    return ok(this.record([{ type: 'roundStarted', round: this.match.round }]))
+    const slot = this.slots[seat]
+    if (slot === undefined) return err('invalid_payload')
+    if (slot.kind === 'human') return err('seat_taken')
+    if (occupant.kind === 'empty') {
+      this.slots[seat] = { kind: 'empty' }
+    } else {
+      const name = slot.kind === 'bot' ? slot.name : this.freeBotName()
+      this.slots[seat] = { kind: 'bot', name, level: occupant.level, standIn: null }
+    }
+    return ok([])
   }
 
-  /**
-   * A whole new match on the same goal: the standings are abandoned. Distinct from
-   * nextRound on purpose - the host may want either, and letting one action mean
-   * both depending on hidden state is how a player loses a scoreboard by accident.
-   */
-  restart(bySeat: number, nextSeed: number): Result<GameEvent[], ErrorCode> {
+  moveSeat(fromSeat: number, toSeat: number): Result<{ seat: number }, ErrorCode> {
+    if (!this.configurable) return err('game_already_started')
+    const mover = this.slots[fromSeat]
+    const target = this.slots[toSeat]
+    if (mover?.kind !== 'human' || target === undefined) return err('invalid_payload')
+    if (fromSeat === toSeat) return ok({ seat: toSeat })
+    if (target.kind !== 'empty') return err('seat_taken')
+    this.slots[toSeat] = mover
+    this.slots[fromSeat] = { kind: 'empty' }
+    if (this.host === fromSeat) this.host = toSeat
+    return ok({ seat: toSeat })
+  }
+
+  private freeBotName(): string {
+    const used = new Set(this.slots.flatMap((s) => (s.kind === 'empty' ? [] : [s.name])))
+    return BOT_NAMES.find((n) => !used.has(n)) ?? `${BOT_NAMES[0] ?? 'Bot'} ${this.slots.length}`
+  }
+
+  /* ---------- game ---------- */
+
+  start(bySeat: number, seed: number): Result<GameEvent[], ErrorCode> {
+    if (this.game !== null) return err('game_already_started')
+    if (bySeat !== this.host) return err('not_host')
+    if (!this.canStart) return err('seats_not_filled')
+    return ok(this.deal(seed, []))
+  }
+
+  /** The hand is over and the table asked for the next one before the clock did. */
+  nextHand(bySeat: number): Result<GameEvent[], ErrorCode> {
     if (this.game === null) return err('game_not_started')
-    if (this.game.phase !== 'finished') return err('round_in_progress')
-    if (bySeat !== this.host) return err('not_host')
-
-    // A new match opens on the host, like the first one did. Carrying the last winner over
-    // would let a result the table has just abandoned decide a match that has not started.
-    this.opensNextDeal = this.host
-    const dealt = this.dealRound(nextSeed)
-    if (!dealt.okay) return err(dealt.error)
-
-    this.game = dealt.value
-    this.match = startMatch(this.goal, this.members.length)
-    // A new match starts from nothing; the old tally described a different one.
-    this.stats = emptyStatsFor(this.members.length)
-    return ok(this.record([{ type: 'gameRestarted' }]))
+    if (this.slots[bySeat]?.kind !== 'human') return err('invalid_payload')
+    if (this.game.phase === 'finished') return err('game_over')
+    if (this.game.hand.phase !== 'done') return err('hand_in_progress')
+    return ok(this.dealNextHand())
   }
 
-  viewFor(seat: number): PlayerView | null {
-    if (this.game === null) return null
-    return redactFor(this.game, seat, this.matchProgress(), {
-      turnDeadline: this.turnDeadline,
-      nextRoundDeadline: this.nextRoundDeadline,
-    })
+  /** The clock dealing the next hand: silent when there is nothing to deal any more. */
+  dealNextHandAutomatically(): GameEvent[] {
+    if (this.game === null || this.game.phase === 'finished') return []
+    if (this.game.hand.phase !== 'done') return []
+    return this.dealNextHand()
+  }
+
+  restart(bySeat: number, seed: number): Result<GameEvent[], ErrorCode> {
+    if (this.game === null) return err('game_not_started')
+    if (bySeat !== this.host) return err('not_host')
+    if (this.game.phase !== 'finished') return err('hand_in_progress')
+    return ok(this.deal(seed, [{ type: 'gameRestarted' }]))
+  }
+
+  private deal(seed: number, lead: GameEvent[]): GameEvent[] {
+    this.game = createGame({ seed, rules: this.rules })
+    this.counter += 1
+    this.completedTrick = false
+    return [
+      ...lead,
+      { type: 'handStarted', number: this.game.handNumber, dealer: this.game.hand.dealer },
+    ]
+  }
+
+  private dealNextHand(): GameEvent[] {
+    if (this.game === null) return []
+    this.game = nextHand(this.game)
+    this.counter += 1
+    this.completedTrick = false
+    return [{ type: 'handStarted', number: this.game.handNumber, dealer: this.game.hand.dealer }]
   }
 
   move(seat: number, move: Move): Result<GameEvent[], ErrorCode> {
+    if (this.game === null) return err('game_not_started')
+    if (this.slots[seat]?.kind !== 'human') return err('not_your_turn')
+    return this.apply(seat, move, [])
+  }
+
+  private apply(seat: number, move: Move, lead: GameEvent[]): Result<GameEvent[], ErrorCode> {
     const before = this.game
     if (before === null) return err('game_not_started')
-
     const result = applyMove(before, seat, move)
     if (!result.okay) {
-      return err(result.error === 'not_your_turn' ? 'not_your_turn' : 'illegal_move')
+      switch (result.error) {
+        case 'game_finished':
+          return err('game_over')
+        case 'not_your_turn':
+          return err('not_your_turn')
+        default:
+          return err('illegal_move')
+      }
     }
-
     this.game = result.value
-    return ok(
-      this.record([
-        ...diffEvents(before, result.value, seat, move),
-        ...this.settleRound(before, result.value),
-      ]),
-    )
+    this.counter += 1
+    this.completedTrick =
+      result.value.hand.phase !== 'done' &&
+      result.value.hand.tricks.length > before.hand.tricks.length
+    return ok([...lead, ...diffEvents(before, result.value, seat, move)])
   }
 
-  /**
-   * Plays for whoever is on turn when their time runs out.
-   *
-   * Always a draw, even when they held something playable: choosing a card for
-   * someone is choosing their move, while drawing is the one action that is always
-   * legal, always neutral, and never spends a card they were saving. It ends the
-   * turn, which is the entire point of the clock.
-   *
-   * A pending draw against them makes `draw` illegal, so accepting it is the same
-   * decision taken on their behalf. If neither is available - the seat could only
-   * have called UNO - nothing is forced: that penalty belongs to the player who
-   * forgot, not to the clock.
-   *
-   * A seat already holding a drawn card is passed rather than made to draw again. They
-   * have drawn; forcing a second card would punish the clock twice, and it is also the
-   * only move that ends that turn - `draw` is not on offer in the sub-state, so without
-   * `pass` first the clock would expire against the same seat for ever.
-   */
+  /** Plays for the seat on turn when a bot holds it, or its human is absent. */
+  botStep(): GameEvent[] {
+    const game = this.game
+    if (game === null || game.phase === 'finished' || game.hand.phase === 'done') return []
+    const seat = game.hand.currentSeat
+    const slot = this.slots[seat]
+    if (slot === undefined || slot.kind === 'empty') return []
+    if (slot.kind === 'human' && slot.status !== 'disconnected') return []
+    const level: BotLevel = slot.kind === 'bot' ? slot.level : 'normal'
+    const move = botMove(game, seat, level, this.counter)
+    if (move === null) return []
+    const applied = this.apply(seat, move, [])
+    return applied.okay ? applied.value : []
+  }
+
+  /** The turn clock ran out on a human: a normal bot plays their move. */
   forceTurnMove(): GameEvent[] {
-    const before = this.game
-    if (before === null || before.phase !== 'playing') return []
-
-    const seat = before.currentSeat
-    const moves = legalMoves(before, seat)
-    const forced =
-      moves.find((move) => move.type === 'pass') ??
-      moves.find((move) => move.type === 'acceptDraw') ??
-      moves.find((move) => move.type === 'draw')
-    if (forced === undefined) return []
-
-    const result = applyMove(before, seat, forced)
-    if (!result.okay) return []
-    this.game = result.value
-
-    return this.record([
-      { type: 'turnTimedOut', seat },
-      ...diffEvents(before, result.value, seat, forced),
-      ...this.settleRound(before, result.value),
-    ])
+    const game = this.game
+    if (game === null || game.phase === 'finished' || game.hand.phase === 'done') return []
+    const seat = game.hand.currentSeat
+    if (this.slots[seat]?.kind !== 'human') return []
+    const move = botMove(game, seat, 'normal', this.counter)
+    if (move === null) return []
+    const applied = this.apply(seat, move, [{ type: 'turnTimedOut', seat }])
+    return applied.okay ? applied.value : []
   }
+
+  /* ---------- presence ---------- */
 
   disconnect(socketId: string): { seat: number; events: GameEvent[] } | null {
-    const member = this.members.find((m) => m.socketId === socketId)
-    if (member === undefined) return null
-
-    member.socketId = null
-    member.status = 'disconnected'
+    const seat = this.seatOfSocket(socketId)
+    const slot = seat === null ? undefined : this.slots[seat]
+    if (seat === null || slot?.kind !== 'human') return null
+    slot.socketId = null
+    slot.status = 'disconnected'
     this.transferHostIfNeeded()
+    return { seat, events: [{ type: 'seatDisconnected', seat }] }
+  }
 
-    if (this.game !== null && this.game.phase === 'playing') {
-      // Mirror presence into the game state, then move the turn past them so the
-      // table never stalls on someone who is gone.
-      this.game = skipDisconnectedTurn(setSeatStatus(this.game, member.seat, 'disconnected'))
-    }
-    return {
-      seat: member.seat,
-      events: this.record([{ type: 'seatDisconnected', seat: member.seat }]),
-    }
+  /** Giving up a seat on purpose: freed in the lobby, held by a bot mid-game. */
+  leave(socketId: string): { seat: number; events: GameEvent[] } | null {
+    const seat = this.seatOfSocket(socketId)
+    if (seat === null) return null
+    return { seat, events: this.vacate(seat) }
   }
 
   /**
@@ -554,143 +423,70 @@ export class Room {
     sessionToken: string,
     socketId: string,
   ): Result<{ seat: number; supersededSocketId: string | null }, ErrorCode> {
-    const member = this.members.find((m) => m.sessionToken === sessionToken)
-    if (member === undefined || member.status === 'left') return err('invalid_session')
+    const seat = this.slots.findIndex(
+      (s) =>
+        (s.kind === 'human' && s.sessionToken === sessionToken) ||
+        (s.kind === 'bot' && s.standIn?.sessionToken === sessionToken),
+    )
+    const slot = this.slots[seat]
+    if (slot === undefined || slot.kind === 'empty') return err('invalid_session')
 
-    const previous = member.socketId
-    member.socketId = socketId
-    member.status = 'active'
-    if (this.game !== null) {
-      this.game = setSeatStatus(this.game, member.seat, 'active')
+    if (slot.kind === 'bot') {
+      if (slot.standIn === null) return err('invalid_session')
+      this.slots[seat] = {
+        kind: 'human',
+        name: slot.standIn.name,
+        sessionToken,
+        socketId,
+        status: 'active',
+      }
+      if (this.humanSeats().length === 1) this.host = seat
+      return ok({ seat, supersededSocketId: null })
     }
-    const supersededSocketId = previous !== null && previous !== socketId ? previous : null
-    return ok({ seat: member.seat, supersededSocketId })
+    const previous = slot.socketId
+    slot.socketId = socketId
+    slot.status = 'active'
+    return ok({
+      seat,
+      supersededSocketId: previous !== null && previous !== socketId ? previous : null,
+    })
   }
 
-  /** Called by RoomManager when the grace period elapses. */
+  /** Called by RoomManager when the reclaim window elapses on a disconnected human. */
   expireGrace(seat: number): GameEvent[] {
-    const member = this.members[seat]
-    if (member === undefined) return []
-    // Came back in time, or already gone for good: nothing to do.
-    if (member.status !== 'disconnected') return []
+    const slot = this.slots[seat]
+    if (slot?.kind !== 'human' || slot.status !== 'disconnected') return []
+    return this.vacate(seat)
+  }
 
-    member.status = 'left'
-    member.socketId = null
-    this.transferHostIfNeeded()
-
-    const events: GameEvent[] = [{ type: 'seatLeft', seat }]
-    if (this.game !== null) {
-      const before = this.game
-      this.game = markSeatLeft(before, seat)
-      events.push(...this.settleRound(before, this.game))
+  private vacate(seat: number): GameEvent[] {
+    const slot = this.slots[seat]
+    if (slot?.kind !== 'human') return []
+    let events: GameEvent[]
+    if (this.game === null) {
+      this.slots[seat] = { kind: 'empty' }
+      events = [{ type: 'seatLeft', seat }]
+    } else {
+      this.slots[seat] = {
+        kind: 'bot',
+        name: slot.name,
+        level: 'normal',
+        standIn: { name: slot.name, sessionToken: slot.sessionToken },
+      }
+      this.counter += 1
+      events = [{ type: 'botTookOver', seat }]
     }
-    return this.record(events)
-  }
-
-  /** The host role follows the lowest-indexed seat still present. */
-  private transferHostIfNeeded(): void {
-    const currentHost = this.members[this.host]
-    if (currentHost !== undefined && currentHost.status === 'active') return
-    const candidate = this.members.find((m) => m.status === 'active')
-    if (candidate !== undefined) this.host = candidate.seat
-  }
-}
-
-/**
- * The Seven-Zero effect a play had, or null when it had none.
- *
- * Read from the card and the table's rules rather than from hand sizes, which a
- * permutation can leave entirely unchanged: two seats holding four cards each swap
- * to no visible difference at all. A finished round means the card emptied a hand
- * and the round ended before any hand could move - first empty hand wins, and the
- * reducer settles that before the effect.
- */
-function sevenZeroEvent(
-  after: GameState,
-  seat: number,
-  move: Move,
-  played: Card,
-): GameEvent | null {
-  if (!after.rules.sevenZero || move.type !== 'play') return null
-  if (after.phase !== 'playing' || played.kind !== 'number') return null
-
-  /* `swapWith` is present only when the reducer really swapped: legalMoves offers a
-     bare 7 when nobody else is active or when the card wins the round, and the move
-     gate compares the field. */
-  if (played.value === 7) {
-    return move.swapWith === undefined ? null : { type: 'handsSwapped', seat, with: move.swapWith }
-  }
-  // Rotating a single active hand is a no-op, and reporting one would be a lie.
-  if (played.value === 0 && activeCount(after) > 1) {
-    return { type: 'handsRotated', direction: after.direction }
-  }
-  return null
-}
-
-/**
- * Derives the narrative feed by comparing the state before and after. Deriving
- * rather than hand-emitting means an event can never contradict the state it
- * describes.
- */
-function diffEvents(before: GameState, after: GameState, seat: number, move: Move): GameEvent[] {
-  const events: GameEvent[] = []
-
-  if (move.type === 'callUno') return [{ type: 'unoCalled', seat }]
-
-  /* Read from the move for the same reason a call-out is: nothing else about the state
-     changed. A pass moves the turn and touches no hand and no pile, so the diff below has
-     nothing to find and would report a turn that ended as though nothing had. */
-  if (move.type === 'pass') return [{ type: 'turnPassed', seat }]
-
-  /* Named explicitly rather than left to the hand-size loop below, which would
-     read the two cards as an ordinary draw by the target. The penalty keeps its
-     own `unoPenalty` event so the statistics and the sound for a forgotten UNO do
-     not have to learn about a second way of charging it. */
-  if (move.type === 'callOut') {
-    const gained =
-      (after.seats[move.target]?.hand.length ?? 0) - (before.seats[move.target]?.hand.length ?? 0)
-    const events: GameEvent[] = [{ type: 'calledOut', by: seat, target: move.target }]
-    // Zero only if the pile could not pay it, which the engine allows rather than
-    // inventing cards.
-    if (gained > 0) events.push({ type: 'unoPenalty', seat: move.target, count: gained })
+    this.transferHostIfNeeded()
     return events
   }
 
-  const played = after.discardPile[after.discardPile.length - 1]
-  if (played !== undefined && after.discardPile.length > before.discardPile.length) {
-    /* A play by a seat whose turn it was not is a jump-in, and there is nothing else
-       it could be: the reducer exempts exactly two moves from the turn check, and the
-       other one is a call-out, which returned above. Read from `before`, since `after`
-       has the turn on the jumper by then - that being the whole effect of the rule. */
-    if (before.rules.jumpIn && before.currentSeat !== seat) {
-      events.push({ type: 'jumpedIn', seat })
-    }
-    events.push({ type: 'cardPlayed', seat, card: played })
-
-    /* Seven-Zero moved hands, so every difference in size below is that permutation
-       and not one card was drawn: the reducer deliberately charges no automatic UNO
-       penalty on a play that permutes, which is what keeps this a size diff rather
-       than an id diff. Reporting a swap as a draw is exactly the sort of event that
-       would contradict the state it describes. */
-    const permutation = sevenZeroEvent(after, seat, move, played)
-    if (permutation !== null) {
-      events.push(permutation)
-      return events
-    }
+  /** The host role follows the lowest-indexed human still present, connected ones first. */
+  private transferHostIfNeeded(): void {
+    const current = this.slots[this.host]
+    if (current?.kind === 'human' && current.status === 'active') return
+    const humans = this.humanSeats()
+    const next =
+      humans.find((i) => (this.slots[i] as Human).status === 'active') ?? humans[0] ?? this.host
+    this.host = next
   }
-
-  for (const seatAfter of after.seats) {
-    const handBefore = before.seats[seatAfter.index]?.hand.length ?? 0
-    const gained = seatAfter.hand.length - handBefore
-    if (gained <= 0) continue
-    events.push(
-      seatAfter.index === seat && move.type === 'play'
-        ? { type: 'unoPenalty', seat: seatAfter.index, count: gained }
-        : { type: 'cardsDrawn', seat: seatAfter.index, count: gained },
-    )
-  }
-
-  /* The round-end event is emitted by the Room, not here: it carries the standings,
-     and a pure diff of two game states has no access to them. */
-  return events
 }

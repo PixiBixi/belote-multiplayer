@@ -23,7 +23,7 @@ afterEach(async () => {
  * asserting the threshold rather than the plugin.
  */
 const fakeBuild = () => {
-  const dir = mkdtempSync(join(tmpdir(), 'uno-web-'))
+  const dir = mkdtempSync(join(tmpdir(), 'belote-web-'))
   writeFileSync(join(dir, 'index.html'), '<div id="root">app shell</div>')
   writeFileSync(join(dir, 'app.js'), 'console.log("bundle")')
   writeFileSync(join(dir, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg" />')

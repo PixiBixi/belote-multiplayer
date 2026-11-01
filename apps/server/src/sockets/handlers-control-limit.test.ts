@@ -1,4 +1,3 @@
-import { DEFAULT_MATCH_GOAL } from '@belote/protocol'
 import { createServer, type Server as HttpServer } from 'node:http'
 import { io as connect, type Socket } from 'socket.io-client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -53,7 +52,6 @@ const hostRoom = async (): Promise<{ host: Socket; roomCode: string; sessionToke
   const host = newClient()
   const created = await emit<CreateAck>(host, 'room:create', {
     playerName: 'Ana',
-    goal: DEFAULT_MATCH_GOAL,
     pace: null,
   })
   if (!created.ok) throw new Error('room:create failed')
@@ -78,7 +76,7 @@ describe('the control-event rate limit', () => {
     await emit<PlainAck>(host, 'room:configure', { pace: null })
     await emit<PlainAck>(host, 'game:start', {})
     await emit<PlainAck>(host, 'room:rejoin', { roomCode, sessionToken })
-    for (const event of ['game:nextRound', 'game:restart', 'game:start']) {
+    for (const event of ['game:nextHand', 'game:restart', 'game:start']) {
       expect(await emit<PlainAck>(host, event, {})).toEqual({ ok: false, error: 'rate_limited' })
     }
     expect(await emit<PlainAck>(host, 'room:rejoin', { roomCode, sessionToken })).toEqual({

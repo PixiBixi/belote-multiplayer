@@ -1,15 +1,23 @@
-import { DEFAULT_MATCH_GOAL } from '@belote/protocol'
+import { DEFAULT_TABLE_RULES } from '@belote/engine'
+import {
+  BETWEEN_HANDS_SECONDS,
+  BOT_DELAY_MS,
+  TRICK_PAUSE_MS,
+  type GameEvent,
+  type PlayerView,
+} from '@belote/protocol'
 import { describe, expect, it } from 'vitest'
-import { RoomManager, type Timers } from './room-manager.js'
+import { ABSENT_TURN_GRACE_MS, RoomManager, type Timers } from './room-manager.js'
+import type { Room } from './room.js'
 
-/** Collects scheduled callbacks so a test can fire them on demand. */
+/** Collects scheduled callbacks with their delay so a test can fire them on demand. */
 const manualTimers = () => {
-  const pending = new Map<number, () => void>()
+  const pending = new Map<number, { fn: () => void; ms: number }>()
   let nextHandle = 1
   const timers: Timers = {
-    setTimeout(fn) {
+    setTimeout(fn, ms) {
       const handle = nextHandle++
-      pending.set(handle, fn)
+      pending.set(handle, { fn, ms })
       return handle
     },
     clearTimeout(handle) {
@@ -21,40 +29,73 @@ const manualTimers = () => {
     fireAll: () => {
       const callbacks = [...pending.values()]
       pending.clear()
-      for (const callback of callbacks) callback()
+      for (const { fn } of callbacks) fn()
     },
+    delays: () => [...pending.values()].map((p) => p.ms),
     pendingCount: () => pending.size,
   }
 }
 
 const managerWith = (overrides: { maxRooms?: number } = {}) => {
   const clock = manualTimers()
+  const time = { now: 1_000_000 }
   const manager = new RoomManager({
     maxRooms: overrides.maxRooms ?? 10,
     gracePeriodMs: 60_000,
     timers: clock.timers,
     seedSource: () => 42,
+    now: () => time.now,
   })
-  return { manager, clock }
+  return { manager, clock, time }
 }
 
-const createdRoom = (manager: RoomManager) => {
-  const created = manager.create(DEFAULT_MATCH_GOAL)
+const createdRoom = (manager: RoomManager, pace: { turnSeconds: number } | null = null) => {
+  const created = manager.create(pace, { ...DEFAULT_TABLE_RULES, target: 501 })
   if (!created.okay) throw new Error(created.error)
   return created.value
 }
 
+/** Ana at seat 0 (host) and three normal bots, dealt and ready. */
+const startedTable = (manager: RoomManager, pace: { turnSeconds: number } | null = null) => {
+  const room = createdRoom(manager, pace)
+  const joined = room.join('Ana', 'socket-0')
+  if (!joined.okay) throw new Error(joined.error)
+  for (const seat of [1, 2, 3]) room.setSeat(0, seat, { kind: 'bot', level: 'normal' })
+  const started = room.start(0, manager.nextSeed())
+  if (!started.okay) throw new Error(started.error)
+  return { room, token: joined.value.sessionToken }
+}
+
+const views = (room: Room): PlayerView[] =>
+  [0, 1, 2, 3].flatMap((seat) => {
+    const view = room.viewFor(seat)
+    return view === null ? [] : [view]
+  })
+
+/** Everything a view says besides the seat's own hand and the rule-public declarations. */
+const publicPart = (view: PlayerView): string =>
+  JSON.stringify({
+    ...view,
+    you: undefined,
+    hand: { ...view.hand, announced: undefined, shownDeclarations: undefined },
+  })
+
+const assertNoLeak = (room: Room): void => {
+  const all = views(room)
+  for (const a of all) {
+    const text = publicPart(a)
+    for (const b of all) {
+      if (a.you.seat === b.you.seat) continue
+      for (const card of b.you.hand) expect(text).not.toContain(`"id":"${card.id}"`)
+    }
+  }
+}
+
 describe('RoomManager.create', () => {
-  it('creates a room reachable by its code', () => {
+  it('creates a room reachable by its code, case-insensitively', () => {
     const { manager } = managerWith()
     const room = createdRoom(manager)
     expect(manager.get(room.code)).toBe(room)
-    expect(manager.size).toBe(1)
-  })
-
-  it('is case-insensitive on lookup', () => {
-    const { manager } = managerWith()
-    const room = createdRoom(manager)
     expect(manager.get(room.code.toLowerCase())).toBe(room)
   })
 
@@ -64,88 +105,287 @@ describe('RoomManager.create', () => {
 
   it('refuses to exceed the room cap, bounding memory', () => {
     const { manager } = managerWith({ maxRooms: 2 })
-    expect(manager.create(DEFAULT_MATCH_GOAL).okay).toBe(true)
-    expect(manager.create(DEFAULT_MATCH_GOAL).okay).toBe(true)
-    expect(manager.create(DEFAULT_MATCH_GOAL)).toEqual({ okay: false, error: 'server_full' })
+    expect(manager.create(null).okay).toBe(true)
+    expect(manager.create(null).okay).toBe(true)
+    expect(manager.create(null)).toEqual({ okay: false, error: 'server_full' })
   })
 })
 
 describe('RoomManager.purge', () => {
-  it('removes rooms nobody is connected to', () => {
-    const { manager } = managerWith()
-    createdRoom(manager)
-    expect(manager.purge()).toBe(1)
-    expect(manager.size).toBe(0)
-  })
-
-  it('keeps a room that still has a connected member', () => {
-    const { manager } = managerWith()
-    createdRoom(manager).join('Ana', 'socket-0')
-    expect(manager.purge()).toBe(0)
-    expect(manager.size).toBe(1)
-  })
-
-  it('tells its listeners which rooms went away, and only those', () => {
+  it('removes rooms nobody is connected to, and tells its listeners', () => {
     const { manager } = managerWith()
     const gone = createdRoom(manager)
     createdRoom(manager).join('Ana', 'socket-0')
-
     const purged: string[] = []
     manager.onPurge((code) => purged.push(code))
-    manager.purge()
+    expect(manager.purge()).toBe(1)
     expect(purged).toEqual([gone.code])
+    expect(manager.size).toBe(1)
+  })
+
+  it('drops a room at once when no human is left, and cancels its timers', () => {
+    const { manager, clock } = managerWith()
+    const { room } = startedTable(manager)
+    manager.schedule(room, () => undefined)
+    expect(clock.pendingCount()).toBe(1)
+    room.leave('socket-0')
+    expect(manager.dropIfAbandoned(room)).toBe(true)
+    expect(manager.get(room.code)).toBeNull()
+    expect(clock.pendingCount()).toBe(0)
   })
 })
 
-describe('RoomManager grace periods', () => {
-  it('fires the expiry callback with the events from the room', () => {
+describe('bots', () => {
+  it('plays a bot turn after BOT_DELAY_MS, plus the trick pause after a completed trick', () => {
     const { manager, clock } = managerWith()
-    const room = createdRoom(manager)
-    room.join('Ana', 'socket-0')
-    room.join('Ben', 'socket-1')
-    room.disconnect('socket-1')
+    const { room } = startedTable(manager)
+    room.leave('socket-0')
+    manager.schedule(room, () => undefined)
+    expect(clock.delays()).toEqual([BOT_DELAY_MS])
 
-    let received: unknown = null
-    manager.scheduleGrace(room, 1, (events) => (received = events))
-    expect(clock.pendingCount()).toBe(1)
+    let sawPause = false
+    for (let i = 0; i < 500 && room.phase === 'playing'; i++) {
+      const wasPause = room.trickJustCompleted && room.automation().kind === 'bot'
+      if (wasPause) {
+        expect(clock.delays()).toEqual([BOT_DELAY_MS + TRICK_PAUSE_MS])
+        sawPause = true
+        break
+      }
+      clock.fireAll()
+    }
+    expect(sawPause).toBe(true)
+  })
+
+  it('plays a whole game to the end with four bots, then restarts it', () => {
+    const { manager, clock, time } = managerWith()
+    const { room, token } = startedTable(manager)
+    room.leave('socket-0')
+
+    const events: GameEvent[] = []
+    const notify = (batch: GameEvent[]): void => {
+      events.push(...batch)
+      assertNoLeak(room)
+    }
+    manager.schedule(room, notify)
+    let fired = 0
+    while (clock.pendingCount() > 0 && fired < 20_000) {
+      time.now += 1000
+      clock.fireAll()
+      fired++
+    }
+
+    const types = events.map((e) => e.type)
+    expect(fired).toBeLessThan(20_000)
+    expect(room.phase).toBe('finished')
+    expect(types.filter((t) => t === 'gameEnded')).toHaveLength(1)
+    expect(types.at(-1)).toBe('gameEnded')
+    expect(types.filter((t) => t === 'handStarted').length).toBeGreaterThan(1)
+    expect(types).toContain('handEnded')
+    expect(clock.pendingCount()).toBe(0)
+
+    const final = room.viewFor(0)
+    expect(final?.phase).toBe('finished')
+    expect(Math.max(...(final?.scores ?? [0]))).toBeGreaterThanOrEqual(501)
+
+    // The host comes back and starts a new game on the same table.
+    expect(room.rejoin(token, 'socket-new').okay).toBe(true)
+    const restarted = room.restart(0, 7)
+    expect(restarted.okay && restarted.value.map((e) => e.type)).toEqual([
+      'gameRestarted',
+      'handStarted',
+    ])
+    expect(room.viewFor(0)?.scores).toEqual([0, 0])
+    expect(room.viewFor(0)?.history).toEqual([])
+  })
+
+  it('deals the next hand by itself after BETWEEN_HANDS_SECONDS and exposes the deadline', () => {
+    const { manager, clock, time } = managerWith()
+    const { room } = startedTable(manager)
+    room.leave('socket-0')
+    const events: GameEvent[] = []
+    manager.schedule(room, (batch) => events.push(...batch))
+    while (room.automation().kind !== 'hand') clock.fireAll()
+
+    expect(clock.delays()).toEqual([BETWEEN_HANDS_SECONDS * 1000])
+    expect(room.viewFor(0)?.nextHandDeadline).toBe(time.now + BETWEEN_HANDS_SECONDS * 1000)
+    const before = events.filter((e) => e.type === 'handStarted').length
     clock.fireAll()
-    expect(received).toContainEqual({ type: 'seatLeft', seat: 1 })
+    expect(events.filter((e) => e.type === 'handStarted')).toHaveLength(before + 1)
+    expect(room.viewFor(0)?.nextHandDeadline).toBeNull()
+  })
+
+  it('lets a human skip the wait with nextHand, and refuses it mid-hand', () => {
+    const { manager, clock } = managerWith()
+    const { room } = startedTable(manager, { turnSeconds: 10 })
+    expect(room.nextHand(0)).toEqual({ okay: false, error: 'hand_in_progress' })
+    manager.schedule(room, () => undefined)
+    for (let i = 0; i < 2000 && room.automation().kind !== 'hand'; i++) clock.fireAll()
+    expect(room.automation().kind).toBe('hand')
+    const dealt = room.nextHand(0)
+    expect(dealt.okay && dealt.value[0]).toMatchObject({ type: 'handStarted', number: 2 })
+  })
+})
+
+describe('hidden information', () => {
+  it("never puts another seat's cards in a view, at every step of a game", () => {
+    const { manager, clock } = managerWith()
+    const { room } = startedTable(manager)
+    room.leave('socket-0')
+    manager.schedule(room, () => assertNoLeak(room))
+    assertNoLeak(room)
+    for (let i = 0; i < 400 && clock.pendingCount() > 0; i++) clock.fireAll()
+    expect(room.viewFor(1)?.you.hand.length).toBeGreaterThanOrEqual(0)
+  })
+
+  it('shows only counts for the other hands', () => {
+    const { manager } = managerWith()
+    const { room } = startedTable(manager)
+    const view = room.viewFor(0)
+    expect(view?.you.hand).toHaveLength(view?.hand.phase === 'bidding' ? 5 : 8)
+    expect(view?.hand.handCounts).toHaveLength(4)
+    expect(Object.keys(view?.hand ?? {})).not.toContain('hands')
+  })
+})
+
+describe('turn clock', () => {
+  const untilHumanTurn = (room: Room, clock: ReturnType<typeof manualTimers>) => {
+    for (let i = 0; i < 500 && room.automation().kind !== 'human'; i++) clock.fireAll()
+  }
+
+  it('gives a human turn a deadline and none to a bot', () => {
+    const { manager, clock, time } = managerWith()
+    const { room } = startedTable(manager, { turnSeconds: 10 })
+    manager.schedule(room, () => undefined)
+    if (room.automation().kind === 'bot') expect(room.viewFor(0)?.turnDeadline).toBeNull()
+    untilHumanTurn(room, clock)
+    expect(room.viewFor(0)?.turnDeadline).toBe(time.now + 10_000)
+    expect(clock.delays()).toEqual([10_000])
+  })
+
+  it('plays a normal bot move for the human on expiry and says so', () => {
+    const { manager, clock } = managerWith()
+    const { room } = startedTable(manager, { turnSeconds: 10 })
+    const events: GameEvent[] = []
+    manager.schedule(room, (batch) => events.push(...batch))
+    untilHumanTurn(room, clock)
+    const counter = room.moveCounter
+    events.length = 0
+
+    clock.fireAll()
+    expect(events[0]).toEqual({ type: 'turnTimedOut', seat: 0 })
+    expect(events.length).toBeGreaterThan(1)
+    expect(room.moveCounter).toBeGreaterThan(counter)
+    // The human is still the human: only that move was played for them.
+    expect(room.seatInfos()[0]?.kind).toBe('human')
+  })
+
+  it('arms no clock for a human on a table without pace', () => {
+    const { manager, clock } = managerWith()
+    const { room } = startedTable(manager)
+    manager.schedule(room, () => undefined)
+    for (let i = 0; i < 500 && clock.pendingCount() > 0; i++) clock.fireAll()
+    expect(room.automation().kind).toBe('none')
+    expect(room.viewFor(0)?.turnDeadline).toBeNull()
+  })
+
+  it('keeps the running clock when nothing changed (a rejoin loop cannot stall the table)', () => {
+    const { manager, clock, time } = managerWith()
+    const { room } = startedTable(manager, { turnSeconds: 10 })
+    manager.schedule(room, () => undefined)
+    untilHumanTurn(room, clock)
+    const deadline = room.viewFor(0)?.turnDeadline
+    time.now += 4000
+    manager.schedule(room, () => undefined)
+    expect(room.viewFor(0)?.turnDeadline).toBe(deadline)
+    expect(clock.pendingCount()).toBe(1)
+  })
+})
+
+describe('leave, disconnect, takeover and reclaim', () => {
+  it('turns a seat into a stand-in bot on leave mid-game, and the token reclaims it', () => {
+    const { manager } = managerWith()
+    const { room, token } = startedTable(manager)
+    const handBefore = room.viewFor(0)?.you.hand
+
+    const left = room.leave('socket-0')
+    expect(left?.events).toEqual([{ type: 'botTookOver', seat: 0 }])
+    expect(room.seatInfos()[0]).toMatchObject({
+      kind: 'bot',
+      level: 'normal',
+      standingInFor: 'Ana',
+    })
+
+    const back = room.rejoin(token, 'socket-new')
+    expect(back).toEqual({ okay: true, value: { seat: 0, supersededSocketId: null } })
+    expect(room.seatInfos()[0]).toMatchObject({ kind: 'human', name: 'Ana', status: 'active' })
+    expect(room.viewFor(0)?.you.hand).toEqual(handBefore)
+    expect(room.hostSeat).toBe(0)
+  })
+
+  it('refuses a token nobody holds', () => {
+    const { manager } = managerWith()
+    const { room } = startedTable(manager)
+    expect(room.rejoin('11111111-2222-4333-8444-555555555555', 's')).toEqual({
+      okay: false,
+      error: 'invalid_session',
+    })
+  })
+
+  it('keeps a disconnected human seated, and a bot plays their turn after the grace', () => {
+    const { manager, clock } = managerWith()
+    const { room } = startedTable(manager)
+    manager.schedule(room, () => undefined)
+    for (let i = 0; i < 500 && room.viewFor(0)?.hand.currentSeat !== 0; i++) clock.fireAll()
+    expect(room.viewFor(0)?.hand.currentSeat).toBe(0)
+
+    const gone = room.disconnect('socket-0')
+    expect(gone?.events).toEqual([{ type: 'seatDisconnected', seat: 0 }])
+    expect(room.seatInfos()[0]).toMatchObject({ kind: 'human', status: 'disconnected' })
+
+    const events: GameEvent[] = []
+    manager.schedule(room, (batch) => events.push(...batch))
+    expect(clock.delays()).toEqual([ABSENT_TURN_GRACE_MS])
+    const counter = room.moveCounter
+    clock.fireAll()
+    expect(room.moveCounter).toBeGreaterThan(counter)
+    expect(room.seatInfos()[0]).toMatchObject({ kind: 'human', status: 'disconnected' })
+  })
+
+  it('turns the seat into a bot once the reclaim window runs out', () => {
+    const { manager, clock } = managerWith()
+    const { room, token } = startedTable(manager)
+    room.disconnect('socket-0')
+    let received: GameEvent[] = []
+    manager.scheduleGrace(room, 0, (events) => (received = events))
+    expect(clock.delays()).toEqual([60_000])
+    clock.fireAll()
+    expect(received).toEqual([{ type: 'botTookOver', seat: 0 }])
+    expect(room.seatInfos()[0]).toMatchObject({ kind: 'bot', standingInFor: 'Ana' })
+    expect(room.rejoin(token, 'socket-new').okay).toBe(true)
   })
 
   it('cancels a pending expiry when the player reconnects', () => {
     const { manager, clock } = managerWith()
-    const room = createdRoom(manager)
-    room.join('Ana', 'socket-0')
+    const { room, token } = startedTable(manager)
     room.disconnect('socket-0')
-
     let fired = false
     manager.scheduleGrace(room, 0, () => (fired = true))
+    room.rejoin(token, 'socket-new')
     manager.cancelGrace(room, 0)
     clock.fireAll()
     expect(fired).toBe(false)
+    expect(room.seatInfos()[0]).toMatchObject({ kind: 'human', status: 'active' })
   })
 
-  it('replaces an existing timer rather than stacking two', () => {
-    const { manager, clock } = managerWith()
-    const room = createdRoom(manager)
-    room.join('Ana', 'socket-0')
-    room.disconnect('socket-0')
-
-    manager.scheduleGrace(room, 0, () => undefined)
-    manager.scheduleGrace(room, 0, () => undefined)
-    expect(clock.pendingCount()).toBe(1)
-  })
-
-  it('fires immediately when the grace period is zero', async () => {
-    const manager = new RoomManager({ maxRooms: 10, gracePeriodMs: 0, seedSource: () => 42 })
+  it('passes the host on when the host leaves, mid-game too', () => {
+    const { manager } = managerWith()
     const room = createdRoom(manager)
     room.join('Ana', 'socket-0')
     room.join('Ben', 'socket-1')
-    room.disconnect('socket-1')
-
-    const events = await new Promise<unknown>((resolve) => {
-      manager.scheduleGrace(room, 1, resolve)
-    })
-    expect(events).toContainEqual({ type: 'seatLeft', seat: 1 })
+    for (const seat of [2, 3]) room.setSeat(0, seat, { kind: 'bot', level: 'easy' })
+    room.start(0, 5)
+    room.leave('socket-0')
+    expect(room.hostSeat).toBe(1)
+    expect(room.abandoned).toBe(false)
   })
 })

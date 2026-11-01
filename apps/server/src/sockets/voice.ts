@@ -112,7 +112,7 @@ export function registerVoiceHandlers(
         ack({ ok: false, error: 'voice_peer_unavailable' })
         return
       }
-      const targetSocketId = presence.room.memberAt(data.toSeat)?.socketId
+      const targetSocketId = presence.room.socketAt(data.toSeat)
       if (targetSocketId == null) {
         ack({ ok: false, error: 'voice_peer_unavailable' })
         return

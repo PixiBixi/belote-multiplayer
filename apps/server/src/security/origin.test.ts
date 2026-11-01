@@ -3,11 +3,11 @@ import { isAllowedOrigin } from './origin.js'
 
 describe('isAllowedOrigin', () => {
   it('accepts a client that sends no Origin, which no browser does', () => {
-    expect(isAllowedOrigin(undefined, 'uno.example.com', [])).toBe(true)
+    expect(isAllowedOrigin(undefined, 'belote.example.com', [])).toBe(true)
   })
 
   it('accepts a page served by this same host', () => {
-    expect(isAllowedOrigin('https://uno.example.com', 'uno.example.com', [])).toBe(true)
+    expect(isAllowedOrigin('https://belote.example.com', 'belote.example.com', [])).toBe(true)
     expect(isAllowedOrigin('http://127.0.0.1:5050', '127.0.0.1:5050', [])).toBe(true)
   })
 
@@ -16,7 +16,7 @@ describe('isAllowedOrigin', () => {
   })
 
   it('refuses a page on another site', () => {
-    expect(isAllowedOrigin('https://evil.example', 'uno.example.com', [])).toBe(false)
+    expect(isAllowedOrigin('https://evil.example', 'belote.example.com', [])).toBe(false)
   })
 
   it('accepts an origin on the allowlist', () => {
@@ -25,11 +25,11 @@ describe('isAllowedOrigin', () => {
   })
 
   it('refuses an opaque or malformed Origin', () => {
-    expect(isAllowedOrigin('null', 'uno.example.com', [])).toBe(false)
-    expect(isAllowedOrigin('not a url', 'uno.example.com', [])).toBe(false)
+    expect(isAllowedOrigin('null', 'belote.example.com', [])).toBe(false)
+    expect(isAllowedOrigin('not a url', 'belote.example.com', [])).toBe(false)
   })
 
   it('refuses a browser Origin when the request carries no Host to compare with', () => {
-    expect(isAllowedOrigin('https://uno.example.com', undefined, [])).toBe(false)
+    expect(isAllowedOrigin('https://belote.example.com', undefined, [])).toBe(false)
   })
 })
