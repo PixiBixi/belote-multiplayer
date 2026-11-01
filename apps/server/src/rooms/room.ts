@@ -8,6 +8,7 @@ import {
   nextHand,
   ok,
   type BotLevel,
+  type GameRecord,
   type GameState,
   type Move,
   type Result,
@@ -80,6 +81,8 @@ export class Room {
   private readonly slots: Slot[] = Array.from({ length: SEAT_COUNT }, () => ({ kind: 'empty' }))
   private host = 0
   private game: GameState | null = null
+  /** Every step since the deal, so a reported bug can be replayed exactly. */
+  private record: GameRecord | null = null
   private pace: MatchPace
   private rules: TableRules
   /* Held, never computed: RoomManager hands the deadlines in, so no clock is read here. */
@@ -153,6 +156,16 @@ export class Room {
   }
 
   /** No human could ever come back: nobody sits here, or only bots (stand-ins included). */
+  /** The current game as a replayable record, or null before the first deal. */
+  get gameRecord(): GameRecord | null {
+    return this.record
+  }
+
+  /** True once the current game has a winner. */
+  get gameFinished(): boolean {
+    return this.game?.phase === 'finished'
+  }
+
   get abandoned(): boolean {
     return this.humanSeats().length === 0
   }
@@ -328,6 +341,7 @@ export class Room {
 
   private deal(seed: number, lead: GameEvent[]): GameEvent[] {
     this.game = createGame({ seed, rules: this.rules })
+    this.record = { seed, rules: this.rules, steps: [] }
     this.counter += 1
     this.completedTrick = false
     return [
@@ -339,6 +353,7 @@ export class Room {
   private dealNextHand(): GameEvent[] {
     if (this.game === null) return []
     this.game = nextHand(this.game)
+    this.record?.steps.push({ kind: 'nextHand' })
     this.counter += 1
     this.completedTrick = false
     return [{ type: 'handStarted', number: this.game.handNumber, dealer: this.game.hand.dealer }]
@@ -365,6 +380,7 @@ export class Room {
       }
     }
     this.game = result.value
+    this.record?.steps.push({ kind: 'move', seat, move })
     this.counter += 1
     this.completedTrick =
       result.value.hand.phase !== 'done' &&

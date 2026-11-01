@@ -119,9 +119,19 @@ export function registerSocketHandlers(
     capacity: config.controlBurst,
     refillPerSecond: config.controlPerSecond,
   })
+  /* The seed reveals every hand, so a record is only logged once its game can no longer
+     be played: ended, or its room closed. Feed it to the engine's replay() to debug. */
+  const logGameRecord = (room: Room, reason: string): void => {
+    const record = room.gameRecord
+    if (record !== null) logger.info({ room: room.code, reason, record }, 'game record')
+  }
   const voiceRooms = createVoiceRooms()
   // A purged room's code can be handed out again; its voice session must not survive it.
-  rooms.onPurge((code) => voiceRooms.drop(code))
+  rooms.onPurge((code, room) => {
+    voiceRooms.drop(code)
+    // A finished game was already logged when it ended; an interrupted one goes now.
+    if (!room.gameFinished) logGameRecord(room, 'room closed')
+  })
   /* One join in a four-player mesh emits an offer, an answer and a dozen or so
      candidates per pair. Generous for that burst, hostile to a signal flood. */
   const voiceLimiter = createRateLimiter({ capacity: 120, refillPerSecond: 10 })
@@ -158,6 +168,7 @@ export function registerSocketHandlers(
 
   /** Everything a change owes the table: its events, the lobby state, each seat's view. */
   const publish = (room: Room, events: GameEvent[]): void => {
+    if (events.some((e) => e.type === 'gameEnded')) logGameRecord(room, 'game ended')
     broadcastEvents(room, events)
     broadcastLobby(room)
     broadcastViews(room)

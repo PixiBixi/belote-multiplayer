@@ -1,4 +1,4 @@
-import { DEFAULT_TABLE_RULES } from '@belote/engine'
+import { DEFAULT_TABLE_RULES, replay } from '@belote/engine'
 import {
   BETWEEN_HANDS_SECONDS,
   BOT_DELAY_MS,
@@ -298,6 +298,24 @@ describe('turn clock', () => {
     manager.schedule(room, () => undefined)
     expect(room.viewFor(0)?.turnDeadline).toBe(deadline)
     expect(clock.pendingCount()).toBe(1)
+  })
+})
+
+describe('game record', () => {
+  it('records every move and deal, and replays to the state the table reached', () => {
+    const { manager } = managerWith()
+    const { room } = startedTable(manager)
+    room.leave('socket-0')
+    for (let i = 0; i < 20000 && !room.gameFinished; i++) {
+      if (room.botStep().length === 0) room.dealNextHandAutomatically()
+    }
+    expect(room.gameFinished).toBe(true)
+
+    const record = room.gameRecord
+    expect(record?.steps).toContainEqual({ kind: 'nextHand' })
+    const replayed = record === null ? null : replay(record)
+    expect(replayed?.okay && replayed.value.scores).toEqual(room.viewFor(1)?.scores)
+    expect(replayed?.okay && replayed.value.phase).toBe('finished')
   })
 })
 
