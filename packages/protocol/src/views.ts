@@ -80,6 +80,8 @@ export type HandView = {
   trick: PlayedCard[]
   lastTrick: Trick | null
   tricksWon: [number, number]
+  /** Card points won so far this hand, dix de der included; tricks are public. By team. */
+  pointsWon: [number, number]
   /**
    * During the first trick, what each seat announced (kinds only, as said at the
    * table). Once the first trick is over, the winning team's full declarations.

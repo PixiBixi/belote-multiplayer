@@ -1,4 +1,12 @@
-import { findDeclarations, legalMoves, teamOf, type GameState, type Trump } from '@belote/engine'
+import {
+  DIX_DE_DER,
+  cardPoints,
+  findDeclarations,
+  legalMoves,
+  teamOf,
+  type GameState,
+  type Trump,
+} from '@belote/engine'
 import type { BeloteCall, HandView, PlayerView, SeatInfo } from './views.js'
 
 /**
@@ -9,7 +17,14 @@ export function buildHandView(state: GameState): HandView {
   const h = state.hand
   const trump: Trump | null = h.contract?.trump ?? null
   const tricksWon: [number, number] = [0, 0]
-  for (const t of h.tricks) tricksWon[teamOf(t.winner)] += 1
+  const pointsWon: [number, number] = [0, 0]
+  h.tricks.forEach((t, i) => {
+    const team = teamOf(t.winner)
+    tricksWon[team] += 1
+    if (trump === null) return
+    pointsWon[team] += t.cards.reduce((sum, p) => sum + cardPoints(p.card, trump), 0)
+    if (i === 7) pointsWon[team] += DIX_DE_DER
+  })
 
   const firstTrickOver = h.tricks.length > 0
   const announced = h.declared
@@ -38,6 +53,7 @@ export function buildHandView(state: GameState): HandView {
     trick: h.trick,
     lastTrick: h.tricks[h.tricks.length - 1] ?? null,
     tricksWon,
+    pointsWon,
     announced,
     shownDeclarations,
     declarationWinner: firstTrickOver ? h.declarationWinner : null,

@@ -54,6 +54,20 @@ describe('buildPlayerView', () => {
     }
     throw new Error('no seed with a belote')
   })
+
+  it('counts hand points as tricks fall, 162 with the dix de der', () => {
+    let s = createGame({ seed: 7, rules: { declarations: false } })
+    s = step(s, { type: 'take', trump: s.hand.turned?.suit ?? 'S' })
+    expect(buildPlayerView(s, 0, seats, timing).hand.pointsWon).toEqual([0, 0])
+    let last = 0
+    while (s.hand.phase === 'playing') {
+      s = step(s, legalMoves(s, s.hand.currentSeat)[0] as Move)
+      const [a, b] = buildPlayerView(s, 0, seats, timing).hand.pointsWon
+      expect(a + b).toBeGreaterThanOrEqual(last)
+      last = a + b
+    }
+    expect(last).toBe(162)
+  })
 })
 
 describe('schemas', () => {
