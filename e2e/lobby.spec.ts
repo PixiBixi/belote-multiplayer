@@ -14,8 +14,8 @@ test('host fills bots and changes rules, a guest joining by code sees them', asy
   await host.getByRole('radio', { name: /Coinche/ }).click()
   await expect(host.getByRole('radio', { name: /Coinche/ })).toHaveAttribute('aria-checked', 'true')
   // Controls follow the server's view, so click then assert rather than check().
-  await host.getByRole('switch', { name: /Pisser/ }).click()
-  await expect(host.getByRole('switch', { name: /Pisser/ })).toBeChecked()
+  await host.getByRole('switch', { name: /Vache/ }).click()
+  await expect(host.getByRole('switch', { name: /Vache/ })).toBeChecked()
   await host.getByRole('switch', { name: /Annonces/ }).click()
   await expect(host.getByRole('switch', { name: /Annonces/ })).not.toBeChecked()
   await host.getByRole('button', { name: '1000', exact: true }).click()
@@ -35,12 +35,12 @@ test('host fills bots and changes rules, a guest joining by code sees them', asy
     'aria-checked',
     'true',
   )
-  await expect(guest.getByRole('switch', { name: /Pisser/ })).toBeChecked()
+  await expect(guest.getByRole('switch', { name: /Vache/ })).toBeChecked()
   await expect(guest.getByRole('switch', { name: /Annonces/ })).not.toBeChecked()
   await expect(guest.getByRole('button', { name: '1000', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
   // A guest cannot configure the table.
-  await expect(guest.getByRole('switch', { name: /Pisser/ })).toBeDisabled()
+  await expect(guest.getByRole('switch', { name: /Vache/ })).toBeDisabled()
 })
