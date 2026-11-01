@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "UNO multiplayer web client",
+  "description": "Belote web client",
   "engines": {
     "node": ">=22"
   },

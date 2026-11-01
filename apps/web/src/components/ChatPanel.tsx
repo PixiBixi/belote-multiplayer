@@ -1,9 +1,14 @@
-import { MAX_CHAT_LENGTH } from '@belote/protocol'
+import { MAX_CHAT_LENGTH, type GameEvent } from '@belote/protocol'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { FeedEntry } from '../hooks/game-reducer.js'
 import { useMessages } from '../i18n/index.js'
-import { describeEvent, seatOfEvent } from '../lib/describe-event.js'
-import { pigmentForSeat } from '../lib/palette.js'
+import { sideTeam } from '../lib/seats.js'
+
+/** The seat an event is about, when it has one: its line takes that seat's team colour. */
+function eventSeat(event: GameEvent): number | null {
+  if (event.type === 'bid') return event.bid.seat
+  return 'seat' in event ? event.seat : null
+}
 
 type ChatPanelProps = {
   feed: FeedEntry[]
@@ -56,23 +61,23 @@ export function ChatPanel({ feed, mySeat, nameOf, onSend }: ChatPanelProps) {
           setOpen(true)
         }}
       >
-        {messages.table.panelTitle}
+        {messages.chat.title}
         {unread > 0 && <span className="unread">{unread}</span>}
       </button>
     )
   }
 
   return (
-    <section className="chat-panel" aria-label={messages.table.chatPanel}>
+    <section className="chat-panel" aria-label={messages.chat.label}>
       <header className="chat-head">
-        <span>{messages.table.panelTitle}</span>
+        <span>{messages.chat.title}</span>
         <button
           type="button"
           className="icon-btn"
           onClick={() => {
             setOpen(false)
           }}
-          aria-label={messages.table.collapsePanel}
+          aria-label={messages.chat.collapse}
         >
           <svg
             width={16}
@@ -93,42 +98,24 @@ export function ChatPanel({ feed, mySeat, nameOf, onSend }: ChatPanelProps) {
       <div className="chat-body" ref={bodyRef}>
         {feed.map((entry) => {
           if (entry.kind === 'event') {
-            const seat = seatOfEvent(entry.event)
+            const text = messages.event(entry.event, nameOf)
+            if (text === null) return null
+            const seat = eventSeat(entry.event)
             return (
               <p
-                className="sys-line"
+                className={seat === null ? 'sys-line' : `sys-line team-${sideTeam(seat, mySeat)}`}
                 data-system=""
                 key={entry.id}
-                style={seat === null ? undefined : { borderInlineStartColor: pigmentForSeat(seat) }}
               >
-                {describeEvent(entry.event, nameOf, mySeat, messages)}
+                {text}
               </p>
             )
           }
           const mine = entry.seat === mySeat
           return (
             <div className={mine ? 'msg msg-mine' : 'msg'} key={entry.id}>
-              <div
-                className="msg-bubble"
-                /* The rule moves to the other edge for my own messages, rather than
-                   staying on the left inside a block pushed right - which is what made
-                   the column read as a ragged edge. Mirrored, the two kinds of line have
-                   one clean edge each: what the table did on the left, what I said on the
-                   right. */
-                style={
-                  mine
-                    ? { borderInlineEndColor: pigmentForSeat(entry.seat) }
-                    : { borderInlineStartColor: pigmentForSeat(entry.seat) }
-                }
-              >
-                {/* Named on every message, mine included. The name used to be withheld for
-                    my own on the grounds that the side of the panel it sat on said so;
-                    nothing sits on a side any more, so withholding it left a line with no
-                    author at all. `describeEvent` already says "You" for my own events, so
-                    the two kinds of line now agree. */}
-                <span className="msg-who" style={{ color: pigmentForSeat(entry.seat) }}>
-                  {mine ? messages.table.you : entry.name}
-                </span>
+              <div className={`msg-bubble team-${sideTeam(entry.seat, mySeat)}`}>
+                <span className="msg-who">{mine ? messages.chat.you : entry.name}</span>
                 <span>{entry.text}</span>
               </div>
             </div>
@@ -140,7 +127,7 @@ export function ChatPanel({ feed, mySeat, nameOf, onSend }: ChatPanelProps) {
           keyboard. */}
       <form className="chat-foot" onSubmit={submit}>
         <label className="visually-hidden" htmlFor="chat-input">
-          {messages.table.messageTable}
+          {messages.chat.messageLabel}
         </label>
         <input
           id="chat-input"
@@ -150,10 +137,10 @@ export function ChatPanel({ feed, mySeat, nameOf, onSend }: ChatPanelProps) {
           }}
           maxLength={MAX_CHAT_LENGTH}
           autoComplete="off"
-          placeholder={messages.table.say}
+          placeholder={messages.chat.placeholder}
         />
         <button type="submit" className="btn btn-primary">
-          {messages.table.send}
+          {messages.chat.send}
         </button>
       </form>
     </section>

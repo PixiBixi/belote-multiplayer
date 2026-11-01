@@ -1,373 +1,288 @@
-import type { Card } from '@belote/engine'
+import type { BidEvent, BotLevel, DeclarationKind, Rank, Suit, Trump } from '@belote/engine'
+import type { ErrorCode, GameEvent } from '@belote/protocol'
 import type { Messages } from './messages.js'
 
-const COLOUR: Record<'R' | 'G' | 'B' | 'Y', string> = {
-  R: 'Red',
-  G: 'Green',
-  B: 'Blue',
-  Y: 'Yellow',
+const SUIT_NAME: Record<Suit, string> = { S: 'Spades', H: 'Hearts', D: 'Diamonds', C: 'Clubs' }
+const RANK_NAME: Record<Rank, string> = {
+  '7': 'Seven',
+  '8': 'Eight',
+  '9': 'Nine',
+  '10': 'Ten',
+  J: 'Jack',
+  Q: 'Queen',
+  K: 'King',
+  A: 'Ace',
 }
+const DECL: Record<DeclarationKind, string> = {
+  tierce: 'Tierce',
+  cinquante: 'Fifty',
+  cent: 'Hundred',
+  carre: 'Four of a kind',
+}
+const LEVEL: Record<BotLevel, string> = { easy: 'Beginner', normal: 'Intermediate', hard: 'Expert' }
 
-const cardName = (card: Card): string => {
-  switch (card.kind) {
-    case 'number':
-      return `${COLOUR[card.color]} ${String(card.value)}`
-    case 'skip':
-      return `${COLOUR[card.color]} skip`
-    case 'reverse':
-      return `${COLOUR[card.color]} reverse`
-    case 'draw2':
-      return `${COLOUR[card.color]} draw two`
-    case 'wild':
-      return 'Wild'
-    case 'wild4':
-      return 'Wild draw four'
+const trumpName = (t: Trump): string =>
+  t === 'AT' ? 'All trumps' : t === 'SA' ? 'No trumps' : SUIT_NAME[t]
+
+const bidValue = (v: number): string => (v === 250 ? 'Capot' : v === 500 ? 'Generale' : String(v))
+
+const bidBubble = (bid: BidEvent): string => {
+  switch (bid.type) {
+    case 'pass':
+      return 'Pass'
+    case 'take':
+      return trumpName(bid.trump)
+    case 'bid':
+      return `${bidValue(bid.value)} ${trumpName(bid.trump)}`
+    case 'coinche':
+      return 'Coinche!'
+    case 'surcoinche':
+      return 'Surcoinche!'
   }
 }
 
-const cards = (n: number) => (n === 1 ? '1 card' : `${String(n)} cards`)
-const points = (n: number) => (n === 1 ? '1 point' : `${String(n)} points`)
-
-const list = (names: string[]): string => {
-  if (names.length <= 1) return names[0] ?? ''
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`
-}
-
+/** The English catalogue: same shape as French, which is the reference language. */
 export const en: Messages = {
-  card: cardName,
-  cardUnplayable: (card) => `${cardName(card)} - not playable this turn`,
-  cardFaceDown: 'Face-down card',
-  colour: (colour) => COLOUR[colour],
-  cardTheme: {
-    note: {
-      poster: 'the default',
-      classic: 'the printed card',
-      flat: 'most legible',
-      letterpress: 'paper',
-      minuit: 'found, not chosen',
-      neon: 'halo',
-    },
-    chosen: 'chosen',
-    privacy:
-      'Your own preference: it never crosses the wire. Two players at the same table can run two different faces.',
-    label: 'Card theme',
-    named: (name) => `Card theme: ${name}`,
-    name: {
-      poster: 'Poster',
-      classic: 'Classic',
-      flat: 'Flat',
-      letterpress: 'Letterpress',
-      minuit: 'Midnight',
-      neon: 'Neon',
-    },
-  },
-  count: { cards, points, list },
+  brand: 'Belote',
+  tagline: 'Belote with friends, online. Classic or Coinche.',
+  rankShort: { '7': '7', '8': '8', '9': '9', '10': '10', J: 'J', Q: 'Q', K: 'K', A: 'A' },
+  suitName: SUIT_NAME,
+  card: (rank, suit) => `${RANK_NAME[rank]} of ${SUIT_NAME[suit].toLowerCase()}`,
+  trumpName,
+  bidValue,
+  declarationName: (kind) => DECL[kind],
+  botLevel: LEVEL,
 
-  /* The +2 and +4 bursts shout a figure, which needs no translating; the other four
-     shout a word, which does. */
-  effect: {
-    wild4: '+4',
-    wild: 'WILD',
-    draw2: '+2',
-    skip: 'SKIP',
-    reverse: 'REVERSE',
-    uno: 'UNO!',
-  },
-
-  connection: { lost: 'Connection lost. Trying to reconnect…' },
-
-  /* English keeps one form for both persons in these, so the `isYou` argument
-     goes unused here. It exists because French cannot: "Toi a posé" is wrong and
-     has to become "Tu as posé". */
-  /* eslint-disable @typescript-eslint/no-unused-vars */
-  event: {
-    cardPlayed: (name, _isYou, card) => `${name} played a ${cardName(card)}`,
-    cardsDrawn: (name, _isYou, count) =>
-      count === 1 ? `${name} drew a card` : `${name} drew ${cards(count)}`,
-    unoCalled: (name, _isYou) => `${name} called UNO`,
-    unoPenalty: (name, _isYou, count) => `${name} forgot to call UNO and drew ${cards(count)}`,
-    calledOut: (by, byIsYou, target, targetIsYou) => {
-      if (byIsYou) return `You caught ${target} without UNO`
-      if (targetIsYou) return `${by} caught you without UNO`
-      return `${by} caught ${target} without UNO`
-    },
-    handsSwapped: (by, byIsYou, target, targetIsYou) => {
-      if (byIsYou) return `You played a 7 and took ${target}’s hand`
-      if (targetIsYou) return `${by} played a 7 and took your hand`
-      return `${by} played a 7 and took ${target}’s hand`
-    },
-    handsRotated: (clockwise) =>
-      clockwise
-        ? 'A 0 sent every hand one seat clockwise'
-        : 'A 0 sent every hand one seat anticlockwise',
-    jumpedIn: (name, isYou) =>
-      isYou ? 'You jumped in, out of turn' : `${name} jumped in, out of turn`,
-    turnPassed: (name, isYou) =>
-      isYou
-        ? 'You kept the card you drew and ended your turn'
-        : `${name} kept the card drawn and ended their turn`,
-    seatDisconnected: (name) => `${name} lost connection`,
-    // The only verb in the log that changes person: everything else is past tense.
-    seatReconnected: (name, isYou) => (isYou ? 'You are back' : `${name} is back`),
-    seatLeft: (name) => `${name} left the game`,
-    turnTimedOut: (name, isYou) => (isYou ? 'You ran out of time' : `${name} ran out of time`),
-    roundWon: (name, isYou, pts) =>
-      `${isYou ? 'You win' : `${name} wins`} the round, +${points(pts)}`,
-    roundAbandoned: () => 'Round abandoned - not enough players',
-    matchResult: (names, youWon) => {
-      if (names.length === 0) return 'The match ends with no winner'
-      if (names.length === 1)
-        return youWon ? 'You win the match' : `${names[0] ?? ''} wins the match`
-      return youWon
-        ? `You tie the match with ${list(names.filter((n) => n !== 'You'))}`
-        : `${list(names)} tie the match`
-    },
-    roundStarted: (round) => `Round ${String(round)} dealt`,
-    gameRestarted: () => 'A new match was dealt',
-  },
-  /* eslint-enable @typescript-eslint/no-unused-vars */
+  connection: { lost: 'Connection lost. Reload the page to get your seat back.' },
 
   home: {
-    tagline: 'Two to four players. Share the code and deal.',
-    yourName: 'Your name',
-    namePlaceholder: 'Ana',
-    createGame: 'Create a game',
-    orJoin: 'or join one',
-    gameCode: 'Game code',
-    codePlaceholder: 'K7QM2X',
-    joinGame: 'Join game',
-    colourMode: 'Palette',
-    colourModeName: { system: 'System', light: 'Paper', dark: 'Ink' },
+    nameLabel: 'Your name',
+    namePlaceholder: 'E.g. Grandma Jean',
+    solo: 'Play against the computer',
+    soloHint: 'A game right now, with three bots.',
+    create: 'Create a table',
+    createHint: 'Invite your friends with a link.',
+    joinTitle: 'Join a table',
+    codeLabel: 'Table code',
+    join: 'Join',
     language: 'Language',
   },
 
-  config: {
-    tableSettings: 'Table settings',
-    matchEnds: 'How the match ends',
-    matchFormat: 'Match format',
-    firstToScore: 'First to a score',
-    setRounds: 'A set number of rounds',
-    winningScore: 'Winning score',
-    rounds: 'Rounds',
-    singleGame: 'Single game',
-    blazing: 'Blazing',
-    clockOnEveryTurn: 'Put a clock on every turn',
-    secondsPerTurn: 'Seconds per turn',
-    blazingHint:
-      'Run out and you draw a card, even if you had one to play. Rounds deal themselves five seconds after the last one ends.',
-    /* "Table rules" rather than "House rules" now the set holds one that is not a house
-       rule at all: playing the card you drew is in the rulebook, and filing it under house
-       rules would tell the host the opposite of what its own hint says. */
-    tableRules: 'Table rules',
-    liar: 'Let players call out a forgotten UNO',
-    liarHint:
-      'Forgetting to call UNO costs nothing unless somebody says so before the end of your next turn. Watch each other.',
-    sevenZero: 'Play the Seven-Zero variant',
-    sevenZeroHint:
-      'A 7 swaps your hand with a player you choose; a 0 sends every hand one seat along, in the direction of play.',
-    jumpIn: 'Allow jump-in',
-    jumpInHint:
-      'Holding the exact same card as the one just played - same colour, same value - you may lay it down out of turn, and play carries on from you. Never a wild, and never while a draw is pending.',
-    playDrawnCard: 'Let a drawn card be played straight away',
-    playDrawnCardHint:
-      'The official rule, so it is on unless you turn it off: draw a card you can play and you may lay it down there and then, or keep it and end your turn. Nothing changes when the card is unplayable - the turn simply ends, as it always did.',
-    ruleOn: 'on',
-    ruleOff: 'off',
-    noClock: 'No clock',
-    paceSummary: (seconds) => `${String(seconds)} seconds per turn`,
-    setByHost: (hostName) => `${hostName} sets these for the table.`,
-    lockedByDeal: 'The cards are dealt, so the table is set for the rest of the match.',
-  },
-
-  help: {
-    title: 'What the cards are worth',
-    intro:
-      'Win a round and you score everything left in the other players’ hands. Nobody scores for the cards they were still holding.',
-    numberCardsLabel: 'Number cards',
-    numberCards: (low, high) => `${String(low)}–${String(high)}, their face value`,
-    skip: 'Skip',
-    reverse: 'Reverse',
-    drawTwo: 'Draw Two',
-    wild: 'Wild',
-    wildFour: 'Wild Draw Four',
-    deckTotal: (total) =>
-      `A full deck is ${String(total)} points. A round pays out only what the losers were still holding, so the same target takes far more rounds at two players than at four - worth knowing before picking one.`,
-  },
-
   lobby: {
-    seatNumber: (n) => `Seat ${String(n)}`,
-    freeSeat: 'waiting',
-    gameCodeLabel: 'Game code',
-    shareHint: 'Share this with the people you want to play.',
-    copyCode: 'Copy code',
-    copyLink: 'Copy link',
-    codeCopied: 'Game code copied',
-    linkCopied: 'Invite link copied',
-    copyFailed: 'Couldn’t copy - select it by hand',
-    waitingForPlayer: 'Waiting for a player…',
-    host: 'Host',
-    theHost: 'the host',
-    reconnecting: 'reconnecting…',
-    left: 'left',
-    startGame: 'Start game',
-    needTwo: 'A game needs at least two players.',
-    waitingForHost: (hostName) => `Waiting for ${hostName} to start the game.`,
-    leaveTable: 'Leave table',
+    title: (code) => `Table ${code}`,
+    invite: 'Invitation link',
+    copy: 'Copy',
+    copied: 'Copied!',
+    copyFailed: 'Could not copy: select the link by hand.',
+    teamUs: 'Team 1',
+    teamThem: 'Team 2',
+    you: 'you',
+    host: 'host',
+    empty: 'Open seat',
+    sitHere: 'Sit here',
+    addBot: 'Add a bot',
+    removeBot: 'Remove',
+    fillBots: 'Fill with bots',
+    start: 'Start the game',
+    waiting: 'Waiting for players…',
+    waitingHost: (name) => `${name} will start the game.`,
+    leave: 'Leave',
+    rules: 'Table rules',
+    variant: 'Variant',
+    classic: 'Classic',
+    classicHint: 'Take or pass on the turned-up card.',
+    coinche: 'Coinche',
+    coincheHint: 'Bids from 80 to 160, capot, generale, coinche.',
+    allTrumps: 'All trumps / No trumps',
+    allTrumpsHint: 'These two contracts can be bid.',
+    vache: 'Vache',
+    vacheHint: 'If everybody passes, play anyway with no trumps and no taker.',
+    pisse: 'Discard instead of trumping',
+    pisseHint: 'Discard rather than trump when your partner is winning.',
+    overtrump: 'Overtrump',
+    overtrumpHint: 'You must play a higher trump when you can.',
+    declarations: 'Declarations',
+    declarationsHint: 'Tierce, fifty, hundred and fours of a kind count.',
+    target: 'Game to',
+    points: (n) => `${n} pts`,
+    clock: 'Time per turn',
+    noClock: 'Unlimited',
+    seconds: (n) => `${n} s`,
+    teamsHint: 'Partners sit opposite each other. Change seats to pick your partner.',
   },
 
   table: {
-    opponents: 'Opponents',
-    discardPile: 'Discard',
-    yourMove: 'Your move',
-    waitingOn: (name) => `${name} to play`,
-    yourTurn: 'your turn',
-    theirTurn: 'their turn',
-    upNext: 'Up next',
-    drawCard: 'Draw card',
-    take: (n) => `Take ${String(n)}`,
-    callUno: 'UNO!',
-    callUnoWithKey: (key) => `Call UNO, shortcut ${key}`,
-    /* "Caught", the word the published rules use, rather than "Liar": forgetting is not
-       lying, and the button's job is to catch an omission, not to allege bad faith. */
-    callOut: 'Caught!',
-    callOutOn: (name) => `Catch ${name} without an UNO`,
-    rulesHeading: 'Rules',
-    /* Each names the rule rather than addressing the player, and none may contain the words
-       "your turn": `yourTurn` is already on this screen, and a chip repeating it made an e2e
-       selector ambiguous once. */
-    ruleShort: {
-      liar: 'Call out a missed UNO',
-      sevenZero: 'Seven-Zero',
-      jumpIn: 'Jump-in',
-      playDrawnCard: 'Play a drawn card',
-    },
-    ruleOn: 'on',
-    ruleOff: 'off',
-    openToCallOut: 'Open to a call-out',
-    youAreExposed: 'You are on one card without an UNO - call it now, before somebody catches you.',
-    jumpIn: 'Jump in!',
-    endTurn: 'End turn',
-    playDrawnCard: 'Play the card you drew, or end your turn',
-    chooseSwapTarget: 'Whose hand do you want?',
-    swapTarget: (name, count) => `${name}, ${cards(count)}`,
-    clockwise: 'Clockwise',
-    anticlockwise: 'Anticlockwise',
-    inPlay: (colour) => `${colour} in play`,
-    left: (n) => `${String(n)} left`,
-    stacked: (n) => `+${String(n)} stacked`,
-    hasLeft: 'left the game',
-    sortHand: 'Sort your hand',
-    sortDealt: 'As dealt',
-    sortColour: 'By colour',
-    sortValue: 'By value',
-    secondsToPlay: 'seconds to play',
-    secondsLeft: 'seconds left',
-    muteSound: 'Mute sound',
-    unmuteSound: 'Unmute sound',
-    chooseColour: 'Choose a colour',
-    cancel: 'Cancel',
-    say: 'Say something…',
-    send: 'Send',
-    messageTable: 'Message the table',
-    chatPanel: 'Table chat and log',
-    panelTitle: 'Table',
-    collapsePanel: 'Collapse the table panel',
-    you: 'You',
-    seat: (n) => `Seat ${String(n)}`,
+    us: 'Us',
+    them: 'Them',
+    handNo: (n) => `Hand ${n}`,
+    target: (n) => `to ${n}`,
+    reserve: (n) => `${n} in reserve`,
+    dealer: 'Dealer',
+    yourTurn: 'Your turn',
+    waitingFor: (name) => `${name} is thinking…`,
+    takerLabel: (name) => `${name} took`,
+    vacheLabel: 'Vache: nobody took',
+    contractLine: (value, trump) =>
+      value === null ? trumpName(trump) : `${bidValue(value)} ${trumpName(trump)}`,
+    coinched: 'Coinched',
+    surcoinched: 'Surcoinched',
+    tricks: (n) => (n > 1 ? `${n} tricks` : `${n} trick`),
+    take: (trump) =>
+      trump === 'AT' || trump === 'SA'
+        ? trumpName(trump)
+        : `Take ${SUIT_NAME[trump].toLowerCase()}`,
+    takeTurned: 'Take',
+    pass: 'Pass',
+    bid: (value, trump) => `Bid ${bidValue(value)} ${trumpName(trump)}`,
+    coinche: 'Coinche!',
+    surcoinche: 'Surcoinche!',
+    chooseValue: 'Contract',
+    chooseTrump: 'Trump',
+    roundTwo: 'Second round: pick another suit or pass.',
+    roundOne: 'First round: take the suit that was turned up?',
+    declare: (names) => `Declare ${names.join(', ')}`,
+    lastTrick: 'Last trick',
+    scoreSheet: 'Score sheet',
+    rules: 'Rules',
+    chat: 'Chat',
+    leave: 'Leave the table',
+    confirmLeave: 'Leave the game? A bot will take your seat.',
+    bot: 'bot',
+    standingInFor: (name) => `standing in for ${name}`,
+    disconnected: 'disconnected',
+    noTrickYet: 'No trick played yet.',
+    timeLeft: (s) => `${s} s`,
+    belote: 'Belote!',
+    rebelote: 'Rebelote!',
   },
 
-  voice: {
-    label: 'Voice chat',
-    join: 'Join voice',
-    joining: 'Joining…',
-    leave: 'Leave voice',
-    mute: 'Mute',
-    unmute: 'Unmute',
-    alone: 'Waiting for someone else to join voice.',
-    noMicrophone: 'No microphone. You can still hear the others once they join.',
-    peerMuted: (name) => `${name} has muted their microphone`,
-    muted: 'muted',
-    unavailableWith: (name) => `Voice unavailable with ${name}`,
-    muteThem: (name) => `Mute ${name}`,
-    unmuteThem: (name) => `Unmute ${name}`,
-    shoutListening: 'Shout "uno" to call it.',
-    shoutUnsupported: 'This browser cannot recognise the word. Use the UNO button.',
-    shoutOffline: 'Shouting "uno" needs an offline language pack.',
-    shoutInstall: 'Download it',
-    shoutInstalling: 'Downloading…',
-    shoutInstallFailed: 'The download did not start. You can still use the UNO button.',
-    shoutCloud:
-      'Call UNO by shouting it. This browser has no offline recognition, so your microphone goes to its maker while your hand is nearly done.',
+  bidBubble,
+
+  result: {
+    made: 'Contract made!',
+    theyMade: 'They made their contract',
+    theyFailed: 'They went down!',
+    failed: 'We went down...',
+    vache: 'Vache',
+    litige: 'Tie: the taker’s points go into reserve',
+    redeal: 'Everybody passed: redealing.',
+    capot: 'Capot!',
+    cards: 'Cards and last trick bonus',
+    declarations: 'Declarations',
+    belote: 'Belote',
+    total: 'Scored',
+    next: 'Next hand',
+    nextIn: (s) => `Next hand in ${s} s`,
   },
 
   over: {
-    roundAbandoned: 'Round abandoned',
-    needsTwo: 'A game needs two players, so this one ends with no winner.',
-    winsRound: (name, isYou) => `${isYou ? 'You win' : `${name} wins`} the round`,
-    firstTo: (pts) => `First to ${points(pts)}`,
-    roundOf: (round, total) => `Round ${String(round)} of ${String(total)}`,
-    nextRound: 'Next round',
-    newMatch: 'New match',
-    waitingNextRound: 'Waiting for the host to deal the next round.',
-    waitingNewMatch: 'Waiting for the host to start a new match.',
-    dealsItself: 'The next round starts on its own.',
-    dealsIn: (seconds) => `Next round deals in ${String(seconds)}…`,
-    awardsTitle: 'How the table played',
-    awards: {
-      mostWild4: 'Most Wild Draw Fours',
-      mostDrawn: 'Most cards drawn',
-      forgotUno: 'Forgot UNO most',
-      ranOutOfTime: 'Ran out of time most',
-      mostPlayed: 'Most cards played',
-    },
+    weWon: 'Victory!',
+    weLost: 'Defeat',
+    winners: (a, b) => `${a} and ${b} win the game`,
+    again: 'New game',
+    waitHost: 'The host can start a new game.',
+    hands: (n) => (n > 1 ? `${n} hands` : `${n} hand`),
   },
 
-  toast: {
-    unoMissed: { title: 'UNO was not called', detail: (count) => `${cards(count)} added.` },
-    lostConnection: {
-      title: 'A player lost connection',
-      detail: 'Their turns are skipped until they return.',
-    },
-    playerLeft: { title: 'A player left', detail: 'Their cards went back to the pile.' },
-    roundAbandoned: { title: 'Round abandoned', detail: 'Not enough players remain.' },
-    roundOver: { title: 'Round over', detail: 'Points go to whoever went out.' },
-    matchOver: { title: 'Match over', detail: 'The standings are final.' },
-    nextRound: { title: 'Next round', detail: 'The host dealt again.' },
-    newMatch: { title: 'New match', detail: 'The standings were reset.' },
+  sheet: {
+    title: 'Score sheet',
+    hand: '#',
+    contract: 'Contract',
+    empty: 'No hand finished yet.',
+    close: 'Close',
+  },
+
+  rulesInPlay: {
+    title: 'Rules of this table',
+    on: 'yes',
+    off: 'no',
+  },
+
+  chat: {
+    placeholder: 'Write a message…',
+    send: 'Send',
+    title: 'Chat',
+    label: 'Table chat and log',
+    messageLabel: 'Message the table',
+    collapse: 'Collapse the chat',
+    you: 'You',
+  },
+
+  voice: {
+    label: 'Voice',
+    join: 'Join voice',
+    joining: 'Connecting…',
+    leave: 'Leave voice',
+    mute: 'Mute my microphone',
+    unmute: 'Unmute my microphone',
+    alone: 'Nobody else is in voice yet.',
+    noMicrophone: 'Microphone unavailable. Allow microphone access in your browser.',
+    peerMuted: (name) => `${name} has muted their microphone`,
+    unavailableWith: (name) => `Voice unavailable with ${name}`,
+    muteThem: (name) => `Mute ${name}`,
+    unmuteThem: (name) => `Unmute ${name}`,
   },
 
   dismissToast: (title) => `Dismiss: ${title}`,
 
-  error: {
-    room_not_found: 'No game with that code.',
-    room_full: 'That game already has four players.',
-    invalid_payload: 'That did not look right. Try again.',
-    not_host: 'Only the host can do that.',
-    too_few_players: 'A game needs at least two players.',
-    game_already_started: 'That game is already under way.',
-    game_not_started: 'The game has not started yet.',
-    illegal_move: 'That card cannot be played right now.',
-    not_your_turn: 'It is not your turn.',
-    rate_limited: 'Slow down a moment.',
-    invalid_session: 'Your seat was given away. Rejoin to play.',
-    server_full: 'The server is at capacity. Try again shortly.',
-    round_in_progress: 'This round is still being played.',
-    match_over: 'The match is over. Start a new one to keep playing.',
-    voice_not_joined: 'Join voice first.',
-    voice_peer_unavailable: 'That player is not on voice.',
+  event: (e: GameEvent, name: (seat: number) => string): string | null => {
+    switch (e.type) {
+      case 'handStarted':
+        return `Hand ${e.number}, ${name(e.dealer)} deals.`
+      case 'bid':
+        return `${name(e.bid.seat)}: ${bidBubble(e.bid)}`
+      case 'declared':
+        return `${name(e.seat)} declares ${e.kinds.map((k) => DECL[k].toLowerCase()).join(', ')}`
+      case 'belote':
+        return `${name(e.seat)}: ${e.call === 'belote' ? 'Belote!' : 'Rebelote!'}`
+      case 'trickWon':
+        return `${name(e.seat)} wins the trick (${e.points} pts)`
+      case 'redeal':
+        return 'Everybody passes, redealing.'
+      case 'handEnded':
+        return `End of the hand: ${e.result.scored[0]} to ${e.result.scored[1]}`
+      case 'gameEnded':
+        return 'Game over!'
+      case 'turnTimedOut':
+        return `${name(e.seat)} ran out of time, a card was played for them.`
+      case 'botTookOver':
+        return `A bot takes ${name(e.seat)}’s seat.`
+      case 'seatDisconnected':
+        return `${name(e.seat)} disconnected.`
+      case 'seatReconnected':
+        return `${name(e.seat)} is back.`
+      case 'seatLeft':
+        return `${name(e.seat)} left the table.`
+      case 'gameRestarted':
+        return 'New game!'
+      default:
+        return null
+    }
   },
+
+  error: {
+    room_not_found: 'This table does not exist (any more).',
+    room_full: 'The table is full.',
+    invalid_payload: 'Invalid request.',
+    not_host: 'Only the host can do that.',
+    seats_not_filled: 'Four players (or bots) are needed to start.',
+    seat_taken: 'That seat is taken.',
+    game_already_started: 'The game has already started.',
+    game_not_started: 'The game has not started.',
+    illegal_move: 'That move is not allowed.',
+    not_your_turn: 'It is not your turn.',
+    rate_limited: 'Easy! Try again in a moment.',
+    invalid_session: 'Session expired.',
+    server_full: 'The server is full, try again later.',
+    hand_in_progress: 'The hand is not over yet.',
+    game_over: 'The game is over.',
+    voice_not_joined: 'You are not in the voice room.',
+    voice_peer_unavailable: 'This player cannot be reached in voice.',
+  } satisfies Record<ErrorCode, string>,
 
   crash: {
-    heading: 'Something in the table stopped working.',
-    seatHeld:
-      'Your seat is still held. Reloading rejoins the same game - the server keeps the state, so nothing is lost but this screen.',
-    reload: 'Reload and rejoin',
+    title: 'Oops, the table slipped.',
+    seatHeld: 'Your seat is held: reload the page to resume the game.',
+    reload: 'Reload',
   },
-
-  goalSummary: (goal) =>
-    goal.kind === 'points'
-      ? `First to ${points(goal.target)}`
-      : goal.count === 1
-        ? 'A single game'
-        : `Best of ${String(goal.count)} rounds`,
 }

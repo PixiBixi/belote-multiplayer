@@ -22,10 +22,10 @@ describe('ErrorBoundary', () => {
   it('renders its children when nothing is wrong', () => {
     render(
       <ErrorBoundary>
-        <p>the table</p>
+        <p>la table</p>
       </ErrorBoundary>,
     )
-    expect(screen.getByText('the table')).toBeTruthy()
+    expect(screen.getByText('la table')).toBeTruthy()
   })
 
   it('replaces a thrown render with an explanation rather than a blank page', () => {
@@ -34,8 +34,8 @@ describe('ErrorBoundary', () => {
         <Boom />
       </ErrorBoundary>,
     )
-    expect(screen.getByRole('alert').textContent).toMatch(/stopped working/i)
-    expect(screen.getByRole('button', { name: /reload/i })).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toMatch(/la table a glissé/i)
+    expect(screen.getByRole('button', { name: /recharger/i })).toBeTruthy()
   })
 
   it('says the seat is still held, because it is', () => {
@@ -46,7 +46,7 @@ describe('ErrorBoundary', () => {
         <Boom />
       </ErrorBoundary>,
     )
-    expect(screen.getByText(/seat is still held/i)).toBeTruthy()
+    expect(screen.getByText(/ta place est gardée/i)).toBeTruthy()
   })
 
   it('shows the game code, read from the address bar', () => {
@@ -67,6 +67,6 @@ describe('ErrorBoundary', () => {
         <Boom />
       </ErrorBoundary>,
     )
-    expect(screen.queryByText(/game code/i)).toBeNull()
+    expect(screen.queryByText(/code de la table/i)).toBeNull()
   })
 })

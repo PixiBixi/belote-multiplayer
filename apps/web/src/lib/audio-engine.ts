@@ -57,7 +57,7 @@ function tone(
   osc.stop(at + options.duration + 0.02)
 }
 
-/** Filtered white noise: the papery part of a card being dealt or shuffled. */
+/** Filtered white noise: the papery part of a card landing on felt. */
 function noise(
   context: AudioContext,
   out: GainNode,
@@ -88,130 +88,75 @@ function noise(
 }
 
 /*
- * The kit. Loudness is deliberately uneven: a card landing happens dozens of
- * times a round and has to stay in the background, while a Wild Draw Four happens
- * rarely and is supposed to land on someone.
+ * The kit. Loudness is deliberately uneven: a card landing happens dozens of times a
+ * hand and has to stay in the background, while a coinche is rare and meant to land.
  */
 const RECIPES: Record<SoundName, Recipe> = {
-  play: (context, out, at) => {
+  card: (context, out, at) => {
+    // A soft snap: a papery tick with a short low body.
     noise(context, out, at, { duration: 0.06, cutoff: 2600, gain: 0.13 })
     tone(context, out, at, { from: 320, to: 190, duration: 0.07, type: 'triangle', gain: 0.07 })
   },
 
-  draw: (context, out, at) => {
-    noise(context, out, at, { duration: 0.14, cutoff: 1500, gain: 0.16 })
-    tone(context, out, at + 0.02, { from: 200, to: 150, duration: 0.1, type: 'sine', gain: 0.05 })
-  },
-
-  skip: (context, out, at) => {
-    tone(context, out, at, { from: 900, to: 420, duration: 0.11, type: 'square', gain: 0.09 })
-  },
-
-  reverse: (context, out, at) => {
-    // Down then up: the direction of play turning round, made audible.
-    tone(context, out, at, { from: 620, to: 330, duration: 0.1, type: 'triangle', gain: 0.1 })
-    tone(context, out, at + 0.09, {
-      from: 330,
-      to: 660,
-      duration: 0.12,
-      type: 'triangle',
-      gain: 0.1,
-    })
-  },
-
-  draw2: (context, out, at) => {
-    tone(context, out, at, { from: 260, to: 130, duration: 0.16, type: 'sawtooth', gain: 0.12 })
-    noise(context, out, at, { duration: 0.12, cutoff: 900, gain: 0.14 })
-  },
-
-  wild: (context, out, at) => {
-    // Four rising notes, one per colour.
-    for (const [index, freq] of [523, 659, 784, 1047].entries()) {
-      tone(context, out, at + index * 0.055, {
-        from: freq,
-        duration: 0.16,
-        type: 'sine',
-        gain: 0.09,
-      })
+  trickWon: (context, out, at) => {
+    // Two bright rising notes: our team took it.
+    for (const [index, freq] of [784, 1047].entries()) {
+      tone(context, out, at + index * 0.08, { from: freq, duration: 0.2, gain: 0.1 })
     }
   },
 
-  wild4: (context, out, at) => {
-    /* The one that is meant to land. A low sweep for weight, a detuned pair for
-       menace, and a noise crack on top for impact. */
-    tone(context, out, at, { from: 320, to: 55, duration: 0.55, type: 'sawtooth', gain: 0.2 })
-    tone(context, out, at, { from: 316, to: 54, duration: 0.55, type: 'square', gain: 0.1 })
-    noise(context, out, at, { duration: 0.3, cutoff: 600, gain: 0.22 })
-    for (const [index, freq] of [196, 233, 294].entries()) {
-      tone(context, out, at + 0.28 + index * 0.05, {
-        from: freq,
-        duration: 0.3,
-        type: 'triangle',
-        gain: 0.11,
-      })
-    }
+  trickLost: (context, out, at) => {
+    // One dull, lower note: theirs, and not worth more.
+    tone(context, out, at, { from: 330, to: 262, duration: 0.18, gain: 0.06 })
   },
 
-  uno: (context, out, at) => {
-    for (const [index, freq] of [880, 1175].entries()) {
-      tone(context, out, at + index * 0.1, { from: freq, duration: 0.22, type: 'sine', gain: 0.14 })
+  bid: (context, out, at) => {
+    tone(context, out, at, { from: 660, duration: 0.1, type: 'triangle', gain: 0.09 })
+  },
+
+  coinche: (context, out, at) => {
+    // The sting: a falling saw with a noise crack on top.
+    tone(context, out, at, { from: 300, to: 70, duration: 0.35, type: 'sawtooth', gain: 0.18 })
+    tone(context, out, at, { from: 296, to: 68, duration: 0.35, type: 'square', gain: 0.08 })
+    noise(context, out, at, { duration: 0.2, cutoff: 800, gain: 0.2 })
+  },
+
+  belote: (context, out, at) => {
+    // A little flourish, four quick notes up.
+    for (const [index, freq] of [659, 784, 988, 1319].entries()) {
+      tone(context, out, at + index * 0.06, { from: freq, duration: 0.14, gain: 0.09 })
     }
   },
 
   yourTurn: (context, out, at) => {
-    // Two soft notes, quiet on purpose: this fires when attention is elsewhere,
-    // so it should reach across a room without being an alarm.
-    tone(context, out, at, { from: 587, duration: 0.13, type: 'sine', gain: 0.1 })
-    tone(context, out, at + 0.12, { from: 784, duration: 0.18, type: 'sine', gain: 0.1 })
-  },
-
-  swap: (context, out, at) => {
-    /* Two sweeps crossing, one rising and one falling, plus the papery noise of
-       cards actually changing hands. Deliberately built from the same material as
-       `reverse`, which is the other cue for the table being turned around. */
-    tone(context, out, at, { from: 380, to: 760, duration: 0.16, type: 'triangle', gain: 0.09 })
-    tone(context, out, at, { from: 760, to: 380, duration: 0.16, type: 'triangle', gain: 0.09 })
-    noise(context, out, at + 0.05, { duration: 0.12, cutoff: 2100, gain: 0.12 })
+    // Two soft notes, quiet on purpose: fires when attention is elsewhere.
+    tone(context, out, at, { from: 587, duration: 0.13, gain: 0.1 })
+    tone(context, out, at + 0.12, { from: 784, duration: 0.18, gain: 0.1 })
   },
 
   timedOut: (context, out, at) => {
-    // Falling and dry: the sound of a turn being taken away, not a card played.
+    // Falling and dry: a turn being taken away, not a card played.
     tone(context, out, at, { from: 300, to: 120, duration: 0.18, type: 'square', gain: 0.09 })
     noise(context, out, at + 0.02, { duration: 0.1, cutoff: 700, gain: 0.1 })
   },
 
-  /* Four endings, not two. Winning and watching someone else win are different
-     events to the person listening, and one shared cue for both congratulates the
-     loser. The pairs are deliberately built from the same material - the same
-     intervals, moving the other way - so the table still sounds coherent. */
+  /* Four endings: winning and watching the other team win are different events, and one
+     shared cue congratulates the loser. Same intervals, moving the other way. */
 
-  roundWon: (context, out, at) => {
-    // Rising major triad: short, bright, over before it outstays its welcome.
+  handWon: (context, out, at) => {
     for (const [index, freq] of [523, 659, 784].entries()) {
-      tone(context, out, at + index * 0.08, {
-        from: freq,
-        duration: 0.22,
-        type: 'sine',
-        gain: 0.12,
-      })
+      tone(context, out, at + index * 0.08, { from: freq, duration: 0.22, gain: 0.12 })
     }
   },
 
-  roundOver: (context, out, at) => {
-    // The same triad falling, quieter and lower: an ending, not an achievement.
+  handLost: (context, out, at) => {
     for (const [index, freq] of [392, 330, 262].entries()) {
-      tone(context, out, at + index * 0.085, {
-        from: freq,
-        duration: 0.24,
-        type: 'sine',
-        gain: 0.075,
-      })
+      tone(context, out, at + index * 0.085, { from: freq, duration: 0.24, gain: 0.075 })
     }
   },
 
-  matchWon: (context, out, at) => {
-    /* The biggest thing in the kit, because it happens once per match. A rising
-       run, a held chord underneath it, and a last octave on top. */
+  gameWon: (context, out, at) => {
+    // Once per game, so the biggest thing in the kit: a run, a held chord, a top octave.
     for (const [index, freq] of [523, 659, 784, 1047].entries()) {
       tone(context, out, at + index * 0.11, {
         from: freq,
@@ -221,22 +166,17 @@ const RECIPES: Record<SoundName, Recipe> = {
       })
     }
     for (const freq of [262, 330, 392]) {
-      tone(context, out, at + 0.44, { from: freq, duration: 0.9, type: 'sine', gain: 0.07 })
+      tone(context, out, at + 0.44, { from: freq, duration: 0.9, gain: 0.07 })
     }
     tone(context, out, at + 0.52, { from: 1568, duration: 0.7, type: 'triangle', gain: 0.11 })
   },
 
-  matchOver: (context, out, at) => {
-    // Someone else took it. A settled cadence - final, but not a celebration.
+  gameLost: (context, out, at) => {
+    // A settled cadence: final, not a celebration.
     for (const [index, freq] of [392, 349, 294].entries()) {
-      tone(context, out, at + index * 0.13, {
-        from: freq,
-        duration: 0.34,
-        type: 'sine',
-        gain: 0.085,
-      })
+      tone(context, out, at + index * 0.13, { from: freq, duration: 0.34, gain: 0.085 })
     }
-    tone(context, out, at + 0.39, { from: 196, duration: 0.7, type: 'sine', gain: 0.075 })
+    tone(context, out, at + 0.39, { from: 196, duration: 0.7, gain: 0.075 })
   },
 }
 

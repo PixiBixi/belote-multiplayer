@@ -9,24 +9,21 @@ type UseTableSounds = {
   feed: FeedEntry[]
   /** Fires a cue on the moment the turn arrives, not for every render of it. */
   isMyTurn: boolean
-  /** Needed to tell winning apart from watching someone else win. */
+  /** Needed to tell our team winning apart from the other one. */
   mySeat: number
 }
 
 /**
  * Turns table events into sound, and owns the mute preference.
  *
- * Driven by the feed rather than the view - the opposite of useTableEffects,
- * deliberately. That hook reads the view because a burst needs the colour chosen
- * for a wild, which the feed may not have caught up with. Sound only needs the
- * card's kind, so one source is enough and the decision stays a pure function.
+ * Driven by the feed: sound only needs the event, so one source is enough and the
+ * decision stays a pure function in sounds.ts.
  */
 export function useTableSounds({ feed, isMyTurn, mySeat }: UseTableSounds) {
   const [muted, setMuted] = useState(readMuted)
   const engine = useRef<AudioEngine | null>(null)
 
-  /* Starts at what is already on screen, exactly as useTableEffects does. A first
-     paint - including the one after a reconnect, which arrives with the whole
+  /* Starts at what is already on screen. A first paint - including the one after a reconnect, which arrives with the whole
      backlog - must not replay every sound of the last ten minutes at once. */
   const lastFeedId = useRef(highestFeedId(feed))
   const wasMyTurn = useRef(isMyTurn)

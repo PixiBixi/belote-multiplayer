@@ -12,13 +12,13 @@ const { App } = await import('./App.js')
 describe('App', () => {
   it('starts on the home screen', () => {
     render(<App />)
-    expect(screen.getByRole('heading', { name: /uno/i })).toBeTruthy()
-    expect(screen.getByLabelText(/your name/i)).toBeTruthy()
+    expect(screen.getByRole('heading', { name: /belote/i })).toBeTruthy()
+    expect(screen.getByLabelText(/ton prénom/i)).toBeTruthy()
   })
 
   it('offers both creating and joining', () => {
     render(<App />)
-    expect(screen.getByRole('button', { name: /create a game/i })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /join game/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /créer une table/i })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /^rejoindre$/i })).toBeTruthy()
   })
 })

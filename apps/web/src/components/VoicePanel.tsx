@@ -1,25 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import type { VoicePeer } from '@belote/protocol'
 import type { useVoice } from '../hooks/useVoice.js'
-import { useLocale, useMessages } from '../i18n/index.js'
-import { installShout, type ShoutAvailability } from '../lib/voice/shout-listener.js'
-import { pigmentForSeat } from '../lib/palette.js'
+import { useMessages } from '../i18n/index.js'
+import { sideTeam } from '../lib/seats.js'
 
 type VoiceState = ReturnType<typeof useVoice>
-
-export type ShoutControls = {
-  availability: ShoutAvailability | 'probing'
-  cloudAllowed: boolean
-  onCloudAllowed: (allowed: boolean) => void
-  /** Re-probes after a language pack lands, which turns cloud into local. */
-  onInstalled: () => void
-}
 
 type VoicePanelProps = {
   voice: VoiceState
   seatNames: string[]
   selfSeat: number
-  shout: ShoutControls
 }
 
 function MicIcon({ off }: { off: boolean }) {
@@ -61,9 +51,8 @@ function SelfRow({ voice, seat, name }: { voice: VoiceState; seat: number; name:
   const t = useMessages()
   return (
     <li
-      className="voice-peer voice-peer-self"
+      className="voice-peer voice-peer-self team-us"
       data-speaking={voice.speaking[seat] === true}
-      style={{ borderInlineStartColor: pigmentForSeat(seat) }}
     >
       <span className="voice-peer-name">{name}</span>
       <button
@@ -83,12 +72,14 @@ function PeerRow({
   voice,
   peer,
   name,
+  team,
   silenced,
   onToggleMute,
 }: {
   voice: VoiceState
   peer: VoicePeer
   name: string
+  team: 'us' | 'them'
   silenced: boolean
   onToggleMute: () => void
 }) {
@@ -99,10 +90,9 @@ function PeerRow({
 
   return (
     <li
-      className="voice-peer"
+      className={`voice-peer team-${team}`}
       data-voice-state={state ?? 'new'}
       data-speaking={voice.speaking[peer.seat] === true}
-      style={{ borderInlineStartColor: pigmentForSeat(peer.seat) }}
     >
       <span className="voice-peer-name">{name}</span>
 
@@ -142,60 +132,7 @@ function PeerRow({
   )
 }
 
-/** What the shout can do here, and what it needs from the player to do it. */
-function ShoutRow({ shout }: { shout: ShoutControls }) {
-  const t = useMessages()
-  const locale = useLocale()
-  const [installing, setInstalling] = useState(false)
-  const [installFailed, setInstallFailed] = useState(false)
-
-  if (shout.availability === 'probing') return null
-  if (shout.availability === 'local') return <p className="voice-note">{t.voice.shoutListening}</p>
-  if (shout.availability === 'unsupported')
-    return <p className="voice-note">{t.voice.shoutUnsupported}</p>
-
-  if (shout.availability === 'downloading')
-    return <p className="voice-note">{t.voice.shoutInstalling}</p>
-
-  if (shout.availability === 'downloadable')
-    return (
-      <p className="voice-note">
-        {/* A refused install lands back on this same button, so the swapped lead is
-            the only thing telling the player their click did anything at all. */}
-        {installFailed ? t.voice.shoutInstallFailed : t.voice.shoutOffline}{' '}
-        <button
-          type="button"
-          className="btn-link"
-          disabled={installing}
-          onClick={() => {
-            // install() needs the gesture, so it is a button and never an effect.
-            setInstalling(true)
-            setInstallFailed(false)
-            void installShout(locale).then((started) => {
-              setInstalling(false)
-              setInstallFailed(!started)
-              shout.onInstalled()
-            })
-          }}
-        >
-          {installing ? t.voice.shoutInstalling : t.voice.shoutInstall}
-        </button>
-      </p>
-    )
-
-  return (
-    <label className="voice-note voice-shout-cloud">
-      <input
-        type="checkbox"
-        checked={shout.cloudAllowed}
-        onChange={(event) => shout.onCloudAllowed(event.target.checked)}
-      />
-      {t.voice.shoutCloud}
-    </label>
-  )
-}
-
-export function VoicePanel({ voice, seatNames, selfSeat, shout }: VoicePanelProps) {
+export function VoicePanel({ voice, seatNames, selfSeat }: VoicePanelProps) {
   const t = useMessages()
   /* Muting someone is local and never broadcast: who I decline to listen to is
      nobody else's business. */
@@ -272,6 +209,7 @@ export function VoicePanel({ voice, seatNames, selfSeat, shout }: VoicePanelProp
               voice={voice}
               peer={peer}
               name={nameFor(peer.seat)}
+              team={sideTeam(peer.seat, selfSeat)}
               silenced={locallyMuted[peer.seat] === true}
               onToggleMute={() =>
                 setLocallyMuted((current) => ({
@@ -283,8 +221,6 @@ export function VoicePanel({ voice, seatNames, selfSeat, shout }: VoicePanelProp
           ),
         )}
       </ul>
-
-      <ShoutRow shout={shout} />
     </section>
   )
 }

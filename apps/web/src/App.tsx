@@ -1,29 +1,37 @@
+import { ChatPanel } from './components/ChatPanel.js'
 import { Toaster } from './components/Toaster.js'
+import { VoicePanel } from './components/VoicePanel.js'
 import { useGameSocket } from './hooks/useGameSocket.js'
+import { useTableSounds } from './hooks/useTableSounds.js'
 import { useVoice } from './hooks/useVoice.js'
 import { useMessages } from './i18n/index.js'
 import { readRoomCodeFromUrl } from './lib/room-url.js'
+import { seatName } from './lib/seats.js'
 import { Home } from './screens/Home.js'
 import { Lobby } from './screens/Lobby.js'
 import { Table } from './screens/Table.js'
 
-/**
- * The screen is a function of what the server pushed. There is no client-side
- * navigation state that could fall out of step with the game.
- */
+/** The screen is a function of what the server pushed; no client-side navigation state. */
 export function App() {
   const { state, actions, socketRef } = useGameSocket()
-  /* Called here rather than in Table: Table is presentational and holds no
-     socket, and voice must ride the same one the game uses. */
   const voice = useVoice({ socketRef, selfSeat: state.seat ?? 0 })
   const t = useMessages()
+
+  /* Called unconditionally, before any early return: sound follows the feed, and the
+     engine must outlive the switch between lobby and table. */
+  useTableSounds({
+    feed: state.feed,
+    mySeat: state.seat ?? 0,
+    isMyTurn:
+      state.view !== null &&
+      state.view.hand.currentSeat === state.view.you.seat &&
+      state.view.you.legalMoves.length > 0,
+  })
 
   if (state.connection === 'lost') {
     return (
       <main className="home">
-        {/* The brand, not a sentence: the name printed on the box, the same in every
-            language. Everything else on this screen comes from the catalogue. */}
-        <h1>UNO</h1>
+        <h1 className="brand">{t.brand}</h1>
         <p className="banner banner-bad" role="alert">
           {t.connection.lost}
         </p>
@@ -32,20 +40,32 @@ export function App() {
   }
 
   if (state.screen === 'table' && state.view !== null) {
+    const view = state.view
+    const nameOf = (seat: number) => seatName(view.seats, seat)
+    const seatNames = view.seats.map((s) => nameOf(s.seat))
     return (
-      <Table
-        view={state.view}
-        lobby={state.lobby}
-        feed={state.feed}
-        toasts={state.toasts}
-        onPlay={actions.playMove}
-        onNextRound={actions.nextRound}
-        onRestart={actions.restartGame}
-        onLeave={actions.leave}
-        onSend={actions.sendChat}
-        onDismissToast={actions.dismissToast}
-        voice={voice}
-      />
+      <>
+        <Table
+          view={view}
+          lobby={state.lobby}
+          onPlay={actions.playMove}
+          onNextHand={actions.nextHand}
+          onRestart={actions.restartGame}
+          onLeave={actions.leave}
+          side={
+            <>
+              <VoicePanel voice={voice} seatNames={seatNames} selfSeat={view.you.seat} />
+              <ChatPanel
+                feed={state.feed}
+                mySeat={view.you.seat}
+                nameOf={nameOf}
+                onSend={actions.sendChat}
+              />
+            </>
+          }
+        />
+        <Toaster toasts={state.toasts} onDismiss={actions.dismissToast} />
+      </>
     )
   }
 
@@ -58,6 +78,8 @@ export function App() {
           onStart={actions.startGame}
           onLeave={actions.leave}
           onConfigure={actions.configureRoom}
+          onSetSeat={actions.setSeat}
+          onMoveSeat={actions.moveSeat}
         />
         <Toaster toasts={state.toasts} onDismiss={actions.dismissToast} />
       </>

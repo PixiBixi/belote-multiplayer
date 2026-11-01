@@ -23,10 +23,7 @@ vi.mock('../lib/audio-engine.js', () => ({
   }),
 }))
 
-const card = (kind: 'number' | 'wild4'): Card =>
-  kind === 'number'
-    ? { id: 'n' as CardId, kind: 'number', color: 'R', value: 5 }
-    : { id: 'w' as CardId, kind: 'wild4' }
+const card: Card = { id: 'JH' as CardId, rank: 'J', suit: 'H' }
 
 let nextId = 0
 const entry = (event: GameEvent): FeedEntry => {
@@ -52,12 +49,12 @@ describe('useTableSounds', () => {
       { initialProps: { feed: [] as FeedEntry[] } },
     )
 
-    rerender({ feed: [entry({ type: 'cardPlayed', seat: 1, card: card('wild4') })] })
-    expect(played).toEqual(['wild4'])
+    rerender({ feed: [entry({ type: 'cardPlayed', seat: 1, card })] })
+    expect(played).toEqual(['card'])
   })
 
   it('never replays an event it has already sounded', () => {
-    const first = [entry({ type: 'unoCalled', seat: 1 })]
+    const first = [entry({ type: 'belote', seat: 1, call: 'belote' })]
     const { rerender } = renderHook(
       ({ feed }: { feed: FeedEntry[] }) => useTableSounds({ feed, isMyTurn: false, mySeat: 0 }),
       { initialProps: { feed: [] as FeedEntry[] } },
@@ -65,38 +62,38 @@ describe('useTableSounds', () => {
 
     rerender({ feed: first })
     rerender({ feed: [...first] })
-    expect(played).toEqual(['uno'])
+    expect(played).toEqual(['belote'])
   })
 
   it('stays silent for a backlog that was already on screen at first paint', () => {
     /* A reconnect arrives with the whole history at once. Sounding it would be a
        minute of the game replayed as noise, which is the audio version of the
-       animation storm useTableEffects guards against. */
+       animation storm. */
     const backlog = [
-      entry({ type: 'cardPlayed', seat: 0, card: card('wild4') }),
-      entry({ type: 'unoCalled', seat: 1 }),
+      entry({ type: 'cardPlayed', seat: 0, card }),
+      entry({ type: 'belote', seat: 1, call: 'belote' }),
     ]
 
     renderHook(() => useTableSounds({ feed: backlog, isMyTurn: false, mySeat: 0 }))
     expect(played).toEqual([])
   })
 
-  it('sounds a win differently from watching someone else win', () => {
+  it('sounds our team winning a trick differently from the other one', () => {
     const { rerender } = renderHook(
       ({ feed }: { feed: FeedEntry[] }) => useTableSounds({ feed, isMyTurn: false, mySeat: 0 }),
       { initialProps: { feed: [] as FeedEntry[] } },
     )
 
     rerender({
-      feed: [entry({ type: 'roundEnded', winner: 0, awarded: [30, 0], scores: [30, 0] })],
+      feed: [entry({ type: 'trickWon', seat: 2, points: 20 })],
     })
-    expect(played).toEqual(['roundWon'])
+    expect(played).toEqual(['trickWon'])
 
     played.length = 0
     rerender({
-      feed: [entry({ type: 'roundEnded', winner: 1, awarded: [0, 30], scores: [30, 30] })],
+      feed: [entry({ type: 'trickWon', seat: 1, points: 20 })],
     })
-    expect(played).toEqual(['roundOver'])
+    expect(played).toEqual(['trickLost'])
   })
 
   it('sounds the turn arriving, once, not every render of it', () => {
@@ -126,13 +123,13 @@ describe('useTableSounds', () => {
     })
     expect(result.current.muted).toBe(true)
 
-    rerender({ feed: [entry({ type: 'unoCalled', seat: 1 })] })
+    rerender({ feed: [entry({ type: 'belote', seat: 1, call: 'belote' })] })
     expect(played).toEqual([])
-    expect(window.localStorage.getItem('uno.pref.muted')).toBe('true')
+    expect(window.localStorage.getItem('belote.pref.muted')).toBe('true')
   })
 
   it('starts muted when that is what was stored', () => {
-    window.localStorage.setItem('uno.pref.muted', 'true')
+    window.localStorage.setItem('belote.pref.muted', 'true')
     const { result } = renderHook(() => useTableSounds({ feed: [], isMyTurn: false, mySeat: 0 }))
     expect(result.current.muted).toBe(true)
   })
@@ -140,7 +137,7 @@ describe('useTableSounds', () => {
   it('starts audible for anything other than a stored true', () => {
     // A half-written or corrupted value must not leave a player in a silence
     // they cannot account for.
-    window.localStorage.setItem('uno.pref.muted', 'wat')
+    window.localStorage.setItem('belote.pref.muted', 'wat')
     const { result } = renderHook(() => useTableSounds({ feed: [], isMyTurn: false, mySeat: 0 }))
     expect(result.current.muted).toBe(false)
   })
@@ -162,7 +159,7 @@ describe('useTableSounds', () => {
   })
 
   it('runs the toggle side effects once, even though StrictMode double-invokes the updater', () => {
-    window.localStorage.setItem('uno.pref.muted', 'true')
+    window.localStorage.setItem('belote.pref.muted', 'true')
     const { result } = renderHook(() => useTableSounds({ feed: [], isMyTurn: false, mySeat: 0 }), {
       wrapper: StrictMode,
     })

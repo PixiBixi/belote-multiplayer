@@ -1,11 +1,11 @@
 import type {
   ClientToServer,
   ErrorCode,
+  SeatOccupant,
   ServerToClient,
   TableConfiguration,
 } from '@belote/protocol'
-import { DEFAULT_MATCH_GOAL } from '@belote/protocol'
-import { DEFAULT_TABLE_RULES, type Move } from '@belote/engine'
+import { DEFAULT_TABLE_RULES, type BotLevel, type Move } from '@belote/engine'
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { io, type Socket } from 'socket.io-client'
 import { readRoomCodeFromUrl, writeRoomCodeToUrl } from '../lib/room-url.js'
@@ -101,35 +101,24 @@ export function useGameSocket() {
     [fail],
   )
 
-  /**
-   * Creates a table on the defaults, which is all the home screen collects now.
-   *
-   * The payload keeps its `goal`, `pace` and `rules` fields even though this always sends
-   * the defaults: they are already validated and already tested, and dropping them would
-   * break a client mid-deploy for no gain. The host changes any of them from the lobby.
-   */
   /*
-   * One create at a time, guarded here rather than in the button.
-   *
-   * A second tap while the first is unanswered opens a second table and abandons the
-   * first - harmless to the player, who lands somewhere, and not harmless to the server,
-   * which held that room until a fix landed. On a phone the acknowledgement is 300 ms
-   * away, which is exactly long enough for an impatient thumb.
-   *
-   * The flag lives with the emit because this is where the acknowledgement arrives, so it
-   * clears on every outcome including a refusal. A disabled button cannot do that: `Home`
-   * never learns the call finished, so it would either stay stuck when a reply is lost or
-   * need a timer of its own guessing when to give up.
+   * One create at a time, guarded here rather than in the button: a double tap on a
+   * phone would otherwise open two tables. The flag clears on every acknowledgement.
    */
   const creating = useRef(false)
 
+  /**
+   * Creates a table on the default rules. `solo` also seats three bots and deals at
+   * once: the emits are ordered on one socket, so the server sees them in sequence.
+   */
   const createRoom = useCallback(
-    (playerName: string) => {
+    (playerName: string, solo = false, level: BotLevel = 'normal') => {
       if (creating.current) return
       creating.current = true
-      socketRef.current?.emit(
+      const socket = socketRef.current
+      socket?.emit(
         'room:create',
-        { playerName, goal: DEFAULT_MATCH_GOAL, pace: null, rules: DEFAULT_TABLE_RULES },
+        { playerName, pace: null, rules: DEFAULT_TABLE_RULES },
         (result) => {
           creating.current = false
           if (!result.ok) {
@@ -139,8 +128,32 @@ export function useGameSocket() {
           writeSession(result.roomCode, result.sessionToken)
           writeRoomCodeToUrl(result.roomCode)
           dispatch({ type: 'joined', roomCode: result.roomCode, seat: result.seat })
+          if (!solo) return
+          for (const seat of [1, 2, 3]) {
+            socket.emit('room:setSeat', { seat, occupant: { kind: 'bot', level } }, () => undefined)
+          }
+          socket.emit('game:start', {}, (r) => {
+            if (!r.ok) fail(r.error)
+          })
         },
       )
+    },
+    [fail],
+  )
+
+  const setSeat = useCallback(
+    (seat: number, occupant: SeatOccupant) => {
+      emitOrFail('room:setSeat', { seat, occupant })
+    },
+    [emitOrFail],
+  )
+
+  const moveSeat = useCallback(
+    (seat: number) => {
+      socketRef.current?.emit('room:moveSeat', { seat }, (result) => {
+        if (!result.ok) fail(result.error)
+        else dispatch({ type: 'seat', seat: result.seat })
+      })
     },
     [fail],
   )
@@ -185,8 +198,8 @@ export function useGameSocket() {
     emitOrFail('game:start', {})
   }, [emitOrFail])
 
-  const nextRound = useCallback(() => {
-    emitOrFail('game:nextRound', {})
+  const nextHand = useCallback(() => {
+    emitOrFail('game:nextHand', {})
   }, [emitOrFail])
 
   const restartGame = useCallback(() => {
@@ -229,9 +242,11 @@ export function useGameSocket() {
     actions: {
       createRoom,
       configureRoom,
+      setSeat,
+      moveSeat,
       joinRoom,
       startGame,
-      nextRound,
+      nextHand,
       restartGame,
       playMove,
       sendChat,

@@ -1,178 +1,313 @@
-import type { TableRules } from '@belote/engine'
-import { MAX_SEATS, type LobbyView, type TableConfiguration } from '@belote/protocol'
-import { CardValues } from '../components/CardValues.js'
+import type { BotLevel, TableRules } from '@belote/engine'
+import {
+  DEFAULT_TURN_SECONDS,
+  TARGET_CHOICES,
+  type LobbyView,
+  type MatchPace,
+  type SeatInfo,
+  type SeatOccupant,
+  type TableConfiguration,
+} from '@belote/protocol'
 import { CopyButton } from '../components/CopyButton.js'
-import { MatchSettings } from '../components/MatchSettings.js'
-import { TableRulesPanel } from '../components/TableRulesPanel.js'
-import { roomLink } from '../lib/room-url.js'
-import { pigmentForSeat } from '../lib/palette.js'
 import { useMessages } from '../i18n/index.js'
+import { roomLink } from '../lib/room-url.js'
 
-/**
- * The waiting room, and now the place the table is configured.
- *
- * Two things moved here from the home screen. The settings themselves, because this is
- * where the host is while there is still someone to wait for - and, more to the point,
- * where everybody who is about to play can see them. A guest used to be shown none of it:
- * `LobbyView` withheld the rules entirely, so a player discovered Seven-Zero when their
- * hand changed owner.
- *
- * Whether the host may still change anything is `lobby.configurable`, which the server
- * derives from the match having begun. It is presentation and nothing else - the server
- * checks the same condition again when `room:configure` arrives, because a host can press
- * Start and toggle a rule in the same breath and whichever lands second has to lose.
- */
-
-type LobbyProps = {
+type Props = {
   lobby: LobbyView
   mySeat: number
   onStart: () => void
   onLeave: () => void
   onConfigure: (changes: TableConfiguration) => void
+  onSetSeat: (seat: number, occupant: SeatOccupant) => void
+  onMoveSeat: (seat: number) => void
 }
 
-export function Lobby({ lobby, mySeat, onStart, onLeave, onConfigure }: LobbyProps) {
-  const t = useMessages()
-  const isHost = mySeat === lobby.hostSeat
-  /* The fallback is only reachable if the roster arrives without the host in it, which
-     the server does not do - but it is still a noun dropped into a sentence, and it has
-     to be the right noun in the right language. */
-  const hostName = lobby.seats.find((seat) => seat.seat === lobby.hostSeat)?.name ?? t.lobby.theHost
-  const emptySeats = Math.max(0, MAX_SEATS - lobby.seats.length)
+const LEVELS: BotLevel[] = ['easy', 'normal', 'hard']
+const CLOCKS: (number | null)[] = [null, 15, DEFAULT_TURN_SECONDS, 60]
 
-  /* Not `canStart`. That counts filled seats, and a table with one player is exactly a
-     table whose host has time to set the rules. */
-  const mayConfigure = isHost && lobby.configurable
-  const configureRules = (rules: TableRules) => {
-    onConfigure({ rules })
-  }
-  const note = mayConfigure
-    ? undefined
-    : lobby.configurable
-      ? t.config.setByHost(hostName)
-      : t.config.lockedByDeal
+export function Lobby({
+  lobby,
+  mySeat,
+  onStart,
+  onLeave,
+  onConfigure,
+  onSetSeat,
+  onMoveSeat,
+}: Props) {
+  const t = useMessages()
+  const isHost = lobby.hostSeat === mySeat
+  const editable = isHost && lobby.configurable
+  const rules = lobby.rules
+  const setRule = (patch: Partial<TableRules>) => onConfigure({ rules: { ...rules, ...patch } })
+  const seat = (n: number) =>
+    lobby.seats.find((s) => s.seat === n) ?? { seat: n, kind: 'empty' as const }
+  const empties = lobby.seats.filter((s) => s.kind === 'empty').map((s) => s.seat)
+  const hostName = seat(lobby.hostSeat)
 
   return (
     <main className="lobby">
-      <div className="lobby-column">
-        <div className="code-block">
-          <span className="eyebrow">{t.lobby.gameCodeLabel}</span>
-          <p className="code-display">{lobby.roomCode}</p>
-          <p className="lobby-lede">{t.lobby.shareHint}</p>
-          {/* Both, because they suit different conversations: a code to read out
-              loud, a link to paste where a code would just have to be retyped. */}
-          <div className="copy-row">
-            <CopyButton
-              value={lobby.roomCode}
-              label={t.lobby.copyCode}
-              subject={t.lobby.codeCopied}
+      <header className="lobby-head">
+        <h1 className="brand">{t.brand}</h1>
+        <p className="lobby-code">{t.lobby.title(lobby.roomCode)}</p>
+        <div className="invite">
+          <span>{t.lobby.invite}</span>
+          <CopyButton
+            value={roomLink(lobby.roomCode)}
+            label={t.lobby.copy}
+            subject={t.lobby.invite}
+          />
+        </div>
+      </header>
+
+      <section className="lobby-table" aria-label={t.lobby.teamsHint}>
+        <div className="mini-felt">
+          {[0, 1, 2, 3].map((n) => (
+            <SeatCard
+              key={n}
+              info={seat(n)}
+              mine={n === mySeat}
+              host={n === lobby.hostSeat}
+              position={
+                (['bottom', 'right', 'top', 'left'] as const)[(n - mySeat + 4) % 4] ?? 'bottom'
+              }
+              editable={editable}
+              canMove={lobby.configurable}
+              onSetSeat={onSetSeat}
+              onMoveSeat={onMoveSeat}
             />
-            <CopyButton
-              value={roomLink(lobby.roomCode)}
-              label={t.lobby.copyLink}
-              subject={t.lobby.linkCopied}
-            />
+          ))}
+          <div className="mini-felt-centre">
+            <span className="team-dot us" /> {t.lobby.teamUs} · <span className="team-dot them" />{' '}
+            {t.lobby.teamThem}
           </div>
         </div>
+        <p className="muted small">{t.lobby.teamsHint}</p>
+        {editable && empties.length > 0 && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => empties.forEach((n) => onSetSeat(n, { kind: 'bot', level: 'normal' }))}
+          >
+            {t.lobby.fillBots}
+          </button>
+        )}
+      </section>
 
-        <ul className="roster">
-          {lobby.seats.map((seat) => {
-            const status =
-              seat.status === 'disconnected'
-                ? t.lobby.reconnecting
-                : seat.status === 'left'
-                  ? t.lobby.left
-                  : null
-            return (
-              <li key={seat.seat} className={seat.status === 'active' ? 'slot' : 'slot slot-away'}>
-                <span className="avatar" style={{ background: pigmentForSeat(seat.seat) }}>
-                  {seat.name.slice(0, 1).toUpperCase()}
-                </span>
-                <span className="slot-who">
-                  <span className="slot-name">{seat.name}</span>
-                  <span className="slot-seat">{t.lobby.seatNumber(seat.seat + 1)}</span>
-                </span>
-                {status !== null && <span className="slot-status">{status}</span>}
-                {seat.seat === lobby.hostSeat && <span className="host-tag">{t.lobby.host}</span>}
-              </li>
-            )
-          })}
-          {Array.from({ length: emptySeats }, (_, index) => (
-            <li key={`empty-${String(index)}`} className="slot slot-empty">
-              <span className="avatar avatar-empty">·</span>
-              <span className="slot-who">
-                <span className="slot-name">{t.lobby.waitingForPlayer}</span>
-                <span className="slot-seat">{t.lobby.freeSeat}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
+      <section className="lobby-rules" aria-label={t.lobby.rules}>
+        <h2>{t.lobby.rules}</h2>
+        <fieldset disabled={!editable}>
+          <div className="variant-pick" role="radiogroup" aria-label={t.lobby.variant}>
+            {(['classic', 'coinche'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="radio"
+                aria-checked={rules.variant === v}
+                className={`variant ${rules.variant === v ? 'is-on' : ''}`}
+                onClick={() => setRule({ variant: v })}
+              >
+                <strong>{v === 'classic' ? t.lobby.classic : t.lobby.coinche}</strong>
+                <small>{v === 'classic' ? t.lobby.classicHint : t.lobby.coincheHint}</small>
+              </button>
+            ))}
+          </div>
 
-        {/* Two separate reasons the game cannot start, said separately. "Nothing
-            happens when I click" is the worst possible answer.
+          <Toggle
+            label={t.lobby.allTrumps}
+            hint={t.lobby.allTrumpsHint}
+            on={rules.allTrumps}
+            set={(on) => setRule({ allTrumps: on })}
+          />
+          <Toggle
+            label={t.lobby.vache}
+            hint={t.lobby.vacheHint}
+            on={rules.vache}
+            set={(on) => setRule({ vache: on })}
+          />
+          <Toggle
+            label={t.lobby.pisse}
+            hint={t.lobby.pisseHint}
+            on={rules.pisse}
+            set={(on) => setRule({ pisse: on })}
+          />
+          <Toggle
+            label={t.lobby.overtrump}
+            hint={t.lobby.overtrumpHint}
+            on={rules.mustOvertrump}
+            set={(on) => setRule({ mustOvertrump: on })}
+          />
+          <Toggle
+            label={t.lobby.declarations}
+            hint={t.lobby.declarationsHint}
+            on={rules.declarations}
+            set={(on) => setRule({ declarations: on })}
+          />
 
-            At the foot of the column, the two controls on one line: the one that ends
-            the waiting is filled, the one that leaves is outlined, and neither is at the
-            bottom of a growing list of settings the way it used to be. */}
-        <div className="lobby-actions">
-          {isHost ? (
-            <>
-              <div className="lobby-start">
+          <div className="pick-row">
+            <span className="pick-label">{t.lobby.target}</span>
+            <div className="chip-row">
+              {TARGET_CHOICES.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`chip ${rules.target === n ? 'is-on' : ''}`}
+                  aria-pressed={rules.target === n}
+                  onClick={() => setRule({ target: n })}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="pick-row">
+            <span className="pick-label">{t.lobby.clock}</span>
+            <div className="chip-row">
+              {CLOCKS.map((s) => {
+                const pace: MatchPace = s === null ? null : { turnSeconds: s }
+                const on = (lobby.pace?.turnSeconds ?? null) === s
+                return (
+                  <button
+                    key={s ?? 'none'}
+                    type="button"
+                    className={`chip ${on ? 'is-on' : ''}`}
+                    aria-pressed={on}
+                    onClick={() => onConfigure({ pace })}
+                  >
+                    {s === null ? t.lobby.noClock : t.lobby.seconds(s)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </fieldset>
+      </section>
+
+      <footer className="lobby-actions">
+        <button type="button" className="btn btn-ghost" onClick={onLeave}>
+          {t.lobby.leave}
+        </button>
+        {isHost ? (
+          <button
+            type="button"
+            className="btn btn-primary btn-big"
+            disabled={!lobby.canStart}
+            onClick={onStart}
+          >
+            {lobby.canStart ? t.lobby.start : t.lobby.waiting}
+          </button>
+        ) : (
+          <p className="muted">
+            {hostName.kind !== 'empty' ? t.lobby.waitingHost(hostName.name) : t.lobby.waiting}
+          </p>
+        )}
+      </footer>
+    </main>
+  )
+}
+
+function Toggle({
+  label,
+  hint,
+  on,
+  set,
+}: {
+  label: string
+  hint: string
+  on: boolean
+  set: (on: boolean) => void
+}) {
+  return (
+    <label className="toggle">
+      <span className="toggle-text">
+        <strong>{label}</strong>
+        <small>{hint}</small>
+      </span>
+      <input type="checkbox" role="switch" checked={on} onChange={(e) => set(e.target.checked)} />
+      <span className="switch" aria-hidden="true" />
+    </label>
+  )
+}
+
+function SeatCard({
+  info,
+  mine,
+  host,
+  position,
+  editable,
+  canMove,
+  onSetSeat,
+  onMoveSeat,
+}: {
+  info: SeatInfo
+  mine: boolean
+  host: boolean
+  position: 'bottom' | 'right' | 'top' | 'left'
+  editable: boolean
+  canMove: boolean
+  onSetSeat: (seat: number, occupant: SeatOccupant) => void
+  onMoveSeat: (seat: number) => void
+}) {
+  const t = useMessages()
+  const team = info.seat % 2 === 0 ? 'us' : 'them'
+  return (
+    <div className={`lobby-seat at-${position} team-${team} ${mine ? 'mine' : ''}`}>
+      {info.kind === 'empty' ? (
+        <>
+          <span className="seat-empty">{t.lobby.empty}</span>
+          <div className="seat-actions">
+            {canMove && !mine && (
+              <button type="button" className="btn btn-small" onClick={() => onMoveSeat(info.seat)}>
+                {t.lobby.sitHere}
+              </button>
+            )}
+            {editable && (
+              <button
+                type="button"
+                className="btn btn-small btn-ghost"
+                onClick={() => onSetSeat(info.seat, { kind: 'bot', level: 'normal' })}
+              >
+                {t.lobby.addBot}
+              </button>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <span className="avatar">{info.name.slice(0, 1).toUpperCase()}</span>
+          <span className="seat-name">
+            {info.name}
+            {mine && <em> ({t.lobby.you})</em>}
+            {host && <span className="tag">{t.lobby.host}</span>}
+          </span>
+          {info.kind === 'bot' && (
+            <div className="seat-actions">
+              <select
+                aria-label={info.name}
+                value={info.level}
+                disabled={!editable}
+                onChange={(e) =>
+                  onSetSeat(info.seat, { kind: 'bot', level: e.target.value as BotLevel })
+                }
+              >
+                {LEVELS.map((l) => (
+                  <option key={l} value={l}>
+                    {t.botLevel[l]}
+                  </option>
+                ))}
+              </select>
+              {editable && (
                 <button
                   type="button"
-                  className="btn btn-primary"
-                  onClick={onStart}
-                  disabled={!lobby.canStart}
+                  className="btn btn-small btn-ghost"
+                  onClick={() => onSetSeat(info.seat, { kind: 'empty' })}
                 >
-                  {t.lobby.startGame}
+                  {t.lobby.removeBot}
                 </button>
-                {!lobby.canStart && <p className="hint">{t.lobby.needTwo}</p>}
-              </div>
-              <button type="button" className="btn" onClick={onLeave}>
-                {t.lobby.leaveTable}
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="hint">{t.lobby.waitingForHost(hostName)}</p>
-              <button type="button" className="btn" onClick={onLeave}>
-                {t.lobby.leaveTable}
-              </button>
-            </>
+              )}
+            </div>
           )}
-        </div>
-      </div>
-
-      {/* The second column on a desktop and the tail of the single column on a phone,
-          laid out the way the home screen's aside is. The settings went into the empty
-          half of the page rather than making anything smaller, which is the lesson the
-          card-theme controls taught this project once already. */}
-      <div className="lobby-aside">
-        <div className="lobby-aside-head">
-          <span className="eyebrow">{t.config.tableSettings}</span>
-          <h2>{t.config.tableRules}</h2>
-        </div>
-
-        <TableRulesPanel
-          rules={lobby.rules}
-          {...(mayConfigure ? { onChange: configureRules } : {})}
-          {...(note === undefined ? {} : { note })}
-        />
-
-        <MatchSettings
-          goal={lobby.goal}
-          pace={lobby.pace}
-          {...(mayConfigure ? { onChange: onConfigure } : {})}
-        />
-
-        {/* In full rather than behind a disclosure: the host is choosing a points target
-            two panels up, and "how many rounds does 500 take" is the question the numbers
-            answer. Its own scroll container on a narrow screen, so the panel that is pure
-            reference cannot push the seats off the page. */}
-        <div className="lobby-values">
-          <CardValues />
-        </div>
-      </div>
-    </main>
+        </>
+      )}
+    </div>
   )
 }

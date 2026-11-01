@@ -1,144 +1,102 @@
-import type { Card, CardId } from '@belote/engine'
 import type { GameEvent } from '@belote/protocol'
 import { describe, expect, it } from 'vitest'
-import { soundForCard, soundForEvent, soundsForEvents } from './sounds.js'
+import { soundForEvent, soundsForEvents } from './sounds.js'
 
-const num = (value: 0 | 5): Card => ({ id: 'n' as CardId, kind: 'number', color: 'R', value })
-const act = (kind: 'skip' | 'reverse' | 'draw2'): Card => ({ id: 'a' as CardId, kind, color: 'G' })
-const wild = (kind: 'wild' | 'wild4'): Card => ({ id: 'w' as CardId, kind })
-
-const played = (card: Card): GameEvent => ({ type: 'cardPlayed', seat: 0, card })
-
-describe('soundForCard', () => {
-  it('gives every number card the same quiet cue', () => {
-    // Dozens of these a round: a distinct sound per value would be exhausting.
-    expect(soundForCard(num(0))).toBe('play')
-    expect(soundForCard(num(5))).toBe('play')
-  })
-
-  it('gives each action card its own', () => {
-    expect(soundForCard(act('skip'))).toBe('skip')
-    expect(soundForCard(act('reverse'))).toBe('reverse')
-    expect(soundForCard(act('draw2'))).toBe('draw2')
-    expect(soundForCard(wild('wild'))).toBe('wild')
-    expect(soundForCard(wild('wild4'))).toBe('wild4')
-  })
-})
+const card = { id: 'JH' as never, rank: 'J' as const, suit: 'H' as const }
+const result = (scored: [number, number]) =>
+  ({ kind: 'played', scored }) as unknown as Extract<GameEvent, { type: 'handEnded' }>['result']
 
 describe('soundForEvent', () => {
-  it('sounds a played card by its kind', () => {
-    expect(soundForEvent(played(wild('wild4')), 0)).toBe('wild4')
-    expect(soundForEvent(played(num(5)), 0)).toBe('play')
+  it('snaps for a card played', () => {
+    expect(soundForEvent({ type: 'cardPlayed', seat: 1, card }, 0)).toBe('card')
   })
 
-  it('sounds a draw the same way however it was earned', () => {
-    expect(soundForEvent({ type: 'cardsDrawn', seat: 1, count: 1 }, 0)).toBe('draw')
-    expect(soundForEvent({ type: 'unoPenalty', seat: 1, count: 2 }, 0)).toBe('draw')
+  it('tells our team taking a trick from the other one', () => {
+    // Team is seat % 2: seat 2 is our partner from seat 0, seat 1 is an opponent.
+    expect(soundForEvent({ type: 'trickWon', seat: 2, points: 10 }, 0)).toBe('trickWon')
+    expect(soundForEvent({ type: 'trickWon', seat: 1, points: 10 }, 0)).toBe('trickLost')
+    expect(soundForEvent({ type: 'trickWon', seat: 1, points: 10 }, 3)).toBe('trickWon')
   })
 
-  it('sounds a UNO call', () => {
-    expect(soundForEvent({ type: 'unoCalled', seat: 0 }, 0)).toBe('uno')
+  it('stays silent on a pass, ticks on a bid and stings on a coinche', () => {
+    expect(soundForEvent({ type: 'bid', bid: { seat: 1, type: 'pass' } }, 0)).toBeNull()
+    expect(soundForEvent({ type: 'bid', bid: { seat: 1, type: 'take', trump: 'H' } }, 0)).toBe(
+      'bid',
+    )
+    expect(soundForEvent({ type: 'bid', bid: { seat: 1, type: 'coinche' } }, 0)).toBe('coinche')
+    expect(soundForEvent({ type: 'bid', bid: { seat: 1, type: 'surcoinche' } }, 0)).toBe('coinche')
   })
 
-  it('sounds a call-out with the same cue as the call it punishes', () => {
-    /* Reusing the UNO cue rather than inventing a sound: the two moments belong to
-       the same rule, and the cards it costs already arrive as a separate `draw`. */
-    expect(soundForEvent({ type: 'calledOut', by: 1, target: 0 }, 0)).toBe('uno')
+  it('flourishes on belote and rebelote', () => {
+    expect(soundForEvent({ type: 'belote', seat: 1, call: 'belote' }, 0)).toBe('belote')
+    expect(soundForEvent({ type: 'belote', seat: 1, call: 'rebelote' }, 0)).toBe('belote')
   })
 
-  it('sounds hands moving, with one cue for a swap and a rotation alike', () => {
-    /* A rotation is a swap generalised - the same rule, and the same thing to
-       notice: what you are holding is not what you were holding. */
-    expect(soundForEvent({ type: 'handsSwapped', seat: 1, with: 0 }, 0)).toBe('swap')
-    expect(soundForEvent({ type: 'handsRotated', direction: -1 }, 0)).toBe('swap')
+  it('tells winning a hand from losing it, by team', () => {
+    const ended = (scored: [number, number]): GameEvent => ({
+      type: 'handEnded',
+      result: result(scored),
+      scores: scored,
+    })
+    expect(soundForEvent(ended([100, 62]), 0)).toBe('handWon')
+    expect(soundForEvent(ended([100, 62]), 1)).toBe('handLost')
+    expect(soundForEvent(ended([40, 122]), 3)).toBe('handWon')
   })
 
-  it('stays silent for a jump-in, whose card sounds a beat later', () => {
-    /* The cardPlayed for the very same card follows immediately and already sounds.
-       Two cues on one instant is the mistake soundsForEvents exists to prevent. */
-    expect(soundForEvent({ type: 'jumpedIn', seat: 1 }, 0)).toBeNull()
-    expect(soundsForEvents([{ type: 'jumpedIn', seat: 1 }, played(act('skip'))], 0)).toEqual([
-      'skip',
-    ])
+  it('tells winning the game from losing it', () => {
+    expect(soundForEvent({ type: 'gameEnded', winner: 0, scores: [1000, 800] }, 2)).toBe('gameWon')
+    expect(soundForEvent({ type: 'gameEnded', winner: 0, scores: [1000, 800] }, 1)).toBe('gameLost')
   })
 
-  it('stays silent when a seat keeps the card it drew and ends its turn', () => {
-    /* The draw it follows has already sounded, and a cue for declining to play would be a
-       noise made for an absence of one. */
-    expect(soundForEvent({ type: 'turnPassed', seat: 1 }, 0)).toBeNull()
-    expect(
-      soundsForEvents(
-        [
-          { type: 'cardsDrawn', seat: 1, count: 1 },
-          { type: 'turnPassed', seat: 1 },
-        ],
-        0,
-      ),
-    ).toEqual(['draw'])
-  })
-
-  it('tells winning a round apart from watching one be won', () => {
-    const ended: GameEvent = { type: 'roundEnded', winner: 0, awarded: [30, 0], scores: [30, 0] }
-    expect(soundForEvent(ended, 0)).toBe('roundWon')
-    expect(soundForEvent(ended, 1)).toBe('roundOver')
-  })
-
-  it('tells winning the match apart from losing it', () => {
-    const ended: GameEvent = { type: 'matchEnded', winners: [0], scores: [510, 90] }
-    expect(soundForEvent(ended, 0)).toBe('matchWon')
-    expect(soundForEvent(ended, 1)).toBe('matchOver')
-  })
-
-  it('counts a shared win as yours', () => {
-    const tied: GameEvent = { type: 'matchEnded', winners: [0, 2], scores: [200, 90, 200] }
-    expect(soundForEvent(tied, 2)).toBe('matchWon')
-    expect(soundForEvent(tied, 1)).toBe('matchOver')
+  it('sounds a timeout for everyone', () => {
+    expect(soundForEvent({ type: 'turnTimedOut', seat: 3 }, 0)).toBe('timedOut')
   })
 
   it('stays silent for what the log already says in words', () => {
-    const quiet: GameEvent[] = [
+    for (const event of [
+      { type: 'handStarted', number: 1, dealer: 0 },
+      { type: 'declared', seat: 1, kinds: ['tierce'] },
+      { type: 'redeal', dealer: 1 },
+      { type: 'botTookOver', seat: 1 },
       { type: 'seatDisconnected', seat: 1 },
       { type: 'seatReconnected', seat: 1 },
       { type: 'seatLeft', seat: 1 },
-      { type: 'roundStarted', round: 2 },
       { type: 'gameRestarted' },
-    ]
-    for (const event of quiet) expect(soundForEvent(event, 0)).toBeNull()
+    ] as GameEvent[]) {
+      expect(soundForEvent(event, 0)).toBeNull()
+    }
   })
 })
 
 describe('soundsForEvents', () => {
-  it('keeps the order the events arrived in', () => {
-    expect(
-      soundsForEvents([played(act('draw2')), { type: 'cardsDrawn', seat: 1, count: 2 }], 0),
-    ).toEqual(['draw2', 'draw'])
-  })
-
-  it('drops the silent ones rather than leaving gaps', () => {
-    expect(soundsForEvents([{ type: 'seatLeft', seat: 1 }, played(num(5))], 0)).toEqual(['play'])
-  })
-
-  it('plays only the bigger ending when a round ends the match', () => {
-    /* The server emits roundEnded immediately followed by matchEnded, so playing
-       both would stack two fanfares on top of each other. */
+  it('keeps the order the events arrived in and drops the silent ones', () => {
     expect(
       soundsForEvents(
         [
-          { type: 'roundEnded', winner: 0, awarded: [80, 0], scores: [510, 0] },
-          { type: 'matchEnded', winners: [0], scores: [510, 0] },
+          { type: 'cardPlayed', seat: 1, card },
+          { type: 'seatLeft', seat: 1 },
+          { type: 'trickWon', seat: 1, points: 12 },
         ],
         0,
       ),
-    ).toEqual(['matchWon'])
+    ).toEqual(['card', 'trickLost'])
   })
 
-  it('still plays the round ending when the match continues', () => {
+  it('plays only the bigger ending when a hand ends the game', () => {
     expect(
-      soundsForEvents([{ type: 'roundEnded', winner: 0, awarded: [20, 0], scores: [20, 0] }], 1),
-    ).toEqual(['roundOver'])
+      soundsForEvents(
+        [
+          { type: 'handEnded', result: result([100, 62]), scores: [1000, 800] },
+          { type: 'gameEnded', winner: 0, scores: [1000, 800] },
+        ],
+        0,
+      ),
+    ).toEqual(['gameWon'])
   })
 
-  it('has nothing to say about an empty batch', () => {
-    expect(soundsForEvents([], 0)).toEqual([])
+  it('still plays the hand ending when the game continues', () => {
+    expect(
+      soundsForEvents([{ type: 'handEnded', result: result([100, 62]), scores: [100, 62] }], 0),
+    ).toEqual(['handWon'])
   })
 })

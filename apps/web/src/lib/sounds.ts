@@ -1,113 +1,69 @@
-import type { Card } from '@belote/engine'
 import type { GameEvent } from '@belote/protocol'
 
 export type SoundName =
-  | 'play'
-  | 'draw'
-  | 'draw2'
-  | 'wild'
-  | 'wild4'
-  | 'skip'
-  | 'reverse'
-  | 'uno'
-  | 'roundWon'
-  | 'roundOver'
-  | 'matchWon'
-  | 'matchOver'
+  | 'card'
+  | 'trickWon'
+  | 'trickLost'
+  | 'bid'
+  | 'coinche'
+  | 'belote'
+  | 'handWon'
+  | 'handLost'
+  | 'gameWon'
+  | 'gameLost'
   | 'yourTurn'
   | 'timedOut'
-  /** Hands changing places, on a Seven-Zero table. */
-  | 'swap'
 
 /**
- * Which sound a played card makes. Unlike the visual burst - which reads the view
- * because it needs the colour chosen for a wild, and the feed cannot be trusted
- * to have caught up - sound depends only on the card's kind. That is what lets
- * every cue here come from one source, the feed, and stay testable without a
- * browser or an AudioContext.
- */
-export function soundForCard(card: Card): SoundName {
-  switch (card.kind) {
-    case 'draw2':
-      return 'draw2'
-    case 'wild4':
-      return 'wild4'
-    case 'wild':
-      return 'wild'
-    case 'skip':
-      return 'skip'
-    case 'reverse':
-      return 'reverse'
-    case 'number':
-      return 'play'
-  }
-}
-
-/**
- * `mySeat` is passed rather than inferred, for the same reason describeEvent takes
- * it: winning and watching someone else win are different events to the person
- * hearing them, and a sound that cannot tell them apart congratulates the loser.
+ * Which sound an event makes. `mySeat` is passed rather than inferred: winning a trick
+ * and watching the other team win one are different events to the person hearing them,
+ * and a sound that cannot tell them apart congratulates the loser. Team is seat % 2.
  */
 export function soundForEvent(event: GameEvent, mySeat: number): SoundName | null {
+  const myTeam = mySeat % 2
   switch (event.type) {
     case 'cardPlayed':
-      return soundForCard(event.card)
-    case 'cardsDrawn':
-    case 'unoPenalty':
-      return 'draw'
-    /* A call-out shares the cue of the call it punishes rather than getting one of
-       its own: the two belong to a single rule, and the cards it costs already
-       arrive separately as a draw. */
-    case 'unoCalled':
-    case 'calledOut':
-      return 'uno'
-    /* One cue for both, because a rotation IS a swap generalised - the same rule
-       moving hands around, and the same thing to notice: what you are holding is
-       not what you were holding. The card itself already sounded as a number. */
-    case 'handsSwapped':
-    case 'handsRotated':
-      return 'swap'
+      return 'card'
+    case 'trickWon':
+      return event.seat % 2 === myTeam ? 'trickWon' : 'trickLost'
+    case 'bid':
+      /* A pass is the commonest bid and carries no news, so it stays silent. */
+      if (event.bid.type === 'pass') return null
+      return event.bid.type === 'coinche' || event.bid.type === 'surcoinche' ? 'coinche' : 'bid'
+    case 'belote':
+      return 'belote'
+    case 'handEnded': {
+      const [mine, theirs] = myTeam === 0 ? event.result.scored : [...event.result.scored].reverse()
+      return (mine ?? 0) >= (theirs ?? 0) ? 'handWon' : 'handLost'
+    }
+    case 'gameEnded':
+      return event.winner === myTeam ? 'gameWon' : 'gameLost'
+    /* Sounded for everyone: at speed the table needs to hear that play moved on
+       without a card being chosen. */
     case 'turnTimedOut':
-      /* Sounded for everyone, not only the seat it happened to: at speed the
-         table needs to hear that play moved on without a card being chosen. */
       return 'timedOut'
-    case 'roundEnded':
-      return event.winner === mySeat ? 'roundWon' : 'roundOver'
-    case 'matchEnded':
-      // A shared win still counts as yours.
-      return event.winners.includes(mySeat) ? 'matchWon' : 'matchOver'
-    /* Silent, and for a reason of its own: a jump-in is immediately followed by the
-       `cardPlayed` for the very same card, which already sounds. A cue here would
-       stack two on one instant - the mistake soundsForEvents exists to stop for a
-       round that ends a match. */
-    case 'jumpedIn':
-      return null
-    /* Silent for a reason of its own as well: the seat has just heard its own draw, and a
-       cue for declining to play would be a noise made for an absence of one. That the turn
-       moved on is announced by whatever the next seat does. */
-    case 'turnPassed':
-      return null
-    // Deliberately silent: a seat connecting, leaving, or a new deal are changes
-    // the log already reports, and a noise for each would be chatter.
+    // Silent on purpose: the log already reports these and a noise for each is chatter.
+    case 'handStarted':
+    case 'declared':
+    case 'redeal':
+    case 'botTookOver':
     case 'seatDisconnected':
     case 'seatReconnected':
     case 'seatLeft':
-    case 'roundStarted':
     case 'gameRestarted':
       return null
   }
 }
 
 /**
- * The cues for one batch of new events, in order.
- *
- * A match ending arrives as roundEnded immediately followed by matchEnded, and
- * playing both would stack two endings on top of each other. The bigger one wins.
+ * The cues for one batch of new events, in order. A game ending arrives as handEnded
+ * immediately followed by gameEnded; playing both would stack two jingles, so the
+ * bigger one wins.
  */
 export function soundsForEvents(events: GameEvent[], mySeat: number): SoundName[] {
-  const endsMatch = events.some((event) => event.type === 'matchEnded')
+  const endsGame = events.some((event) => event.type === 'gameEnded')
   return events
     .map((event) => soundForEvent(event, mySeat))
     .filter((name): name is SoundName => name !== null)
-    .filter((name) => !(endsMatch && (name === 'roundOver' || name === 'roundWon')))
+    .filter((name) => !(endsGame && (name === 'handWon' || name === 'handLost')))
 }

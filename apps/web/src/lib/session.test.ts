@@ -37,7 +37,7 @@ describe('session store', () => {
 
   it('namespaces and normalises the key it writes', () => {
     writeSession('abc234', 'token-1')
-    expect(window.localStorage.getItem('uno.session.ABC234')).toBe('token-1')
+    expect(window.localStorage.getItem('belote.session.ABC234')).toBe('token-1')
   })
 
   it('degrades instead of throwing when storage is unavailable', () => {

@@ -7,7 +7,7 @@ export { LOCALES, LOCALE_NAME, type Locale, type Messages } from './messages.js'
 
 export const CATALOGUES: Record<Locale, Messages> = { en, fr }
 
-const LOCALE_KEY = 'uno.pref.locale'
+const LOCALE_KEY = 'belote.pref.locale'
 
 const isLocale = (value: string | null): value is Locale =>
   value !== null && (LOCALES as readonly string[]).includes(value)
@@ -26,7 +26,7 @@ export function detectLocale(): Locale {
   }
   const preferred = typeof navigator === 'undefined' ? '' : navigator.language
   const primary = preferred.split('-')[0]?.toLowerCase() ?? ''
-  return isLocale(primary) ? primary : 'en'
+  return isLocale(primary) ? primary : 'fr'
 }
 
 export function writeLocale(locale: Locale): void {
@@ -40,8 +40,8 @@ export function writeLocale(locale: Locale): void {
 type LocaleValue = { locale: Locale; messages: Messages; setLocale: (next: Locale) => void }
 
 export const LocaleContext = createContext<LocaleValue>({
-  locale: 'en',
-  messages: en,
+  locale: 'fr',
+  messages: fr,
   setLocale: () => undefined,
 })
 

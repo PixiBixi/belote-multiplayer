@@ -12,8 +12,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-const setup = () =>
-  render(<CopyButton value="8A242X" label="Copy code" subject="Game code copied" />)
+const setup = () => render(<CopyButton value="8A242X" label="Copier" subject="Lien copié" />)
 
 describe('CopyButton', () => {
   it('puts the value on the clipboard', async () => {
@@ -21,7 +20,7 @@ describe('CopyButton', () => {
     stubClipboard(writeText)
     setup()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Copy code' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Copier' }))
 
     expect(writeText).toHaveBeenCalledWith('8A242X')
   })
@@ -30,9 +29,9 @@ describe('CopyButton', () => {
     stubClipboard(vi.fn().mockResolvedValue(undefined))
     setup()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Copy code' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Copier' }))
 
-    expect(await screen.findByText('Game code copied')).toBeTruthy()
+    expect(await screen.findByText('Lien copié')).toBeTruthy()
   })
 
   it('keeps its label through the confirmation', async () => {
@@ -41,19 +40,19 @@ describe('CopyButton', () => {
     stubClipboard(vi.fn().mockResolvedValue(undefined))
     setup()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Copy code' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Copier' }))
 
-    await screen.findByText('Game code copied')
-    expect(screen.getByRole('button', { name: 'Copy code' })).toBeTruthy()
+    await screen.findByText('Lien copié')
+    expect(screen.getByRole('button', { name: 'Copier' })).toBeTruthy()
   })
 
   it('says so visibly when the copy fails', async () => {
     // Nothing stubbed: jsdom offers neither path, as an insecure context would.
     setup()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Copy code' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Copier' }))
 
-    expect(await screen.findByText(/select it by hand/i)).toBeTruthy()
+    expect(await screen.findByText(/sélectionne le lien/i)).toBeTruthy()
   })
 
   it('returns to its resting state after a moment', async () => {
@@ -63,17 +62,17 @@ describe('CopyButton', () => {
 
     /* fireEvent rather than userEvent: userEvent awaits its own internal delays,
        which never elapse under fake timers, so the pair deadlocks. */
-    fireEvent.click(screen.getByRole('button', { name: 'Copy code' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copier' }))
     // Zero milliseconds, purely to let the clipboard promise settle.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    expect(screen.getByText('Game code copied')).toBeTruthy()
+    expect(screen.getByText('Lien copié')).toBeTruthy()
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000)
     })
 
-    expect(screen.queryByText('Game code copied')).toBeNull()
+    expect(screen.queryByText('Lien copié')).toBeNull()
   })
 })

@@ -34,6 +34,7 @@ export type ClientState = {
 export type Action =
   | { type: 'connection'; connection: ClientState['connection'] }
   | { type: 'joined'; roomCode: string; seat: number }
+  | { type: 'seat'; seat: number }
   | { type: 'lobby'; lobby: LobbyView }
   | { type: 'view'; view: PlayerView }
   | { type: 'event'; event: GameEvent }
@@ -55,39 +56,23 @@ export const initialState: ClientState = {
   nextId: 1,
 }
 
-/**
- * Only events worth interrupting a player for. A toast per drawn card is noise,
- * and noise trains people to ignore the channel.
- *
- * The tone is this module's decision - how loudly to interrupt is behaviour. The
- * words are not: they are two sentences a player reads, so they come from the
- * catalogue it was handed, exactly as `describeEvent` takes one. Importing a
- * catalogue here instead would pick a language at build time and no chip on the
- * home screen could change it.
- */
-function toastFor(event: GameEvent, t: Messages): Omit<Toast, 'id'> | null {
-  const toast = t.toast
+/** Only events worth interrupting a player for; the rest goes to the feed. */
+function toastFor(
+  event: GameEvent,
+  t: Messages,
+  name: (seat: number) => string,
+): Omit<Toast, 'id'> | null {
+  const text = t.event(event, name)
+  if (text === null) return null
   switch (event.type) {
-    case 'unoPenalty':
-      return {
-        tone: 'warn',
-        title: toast.unoMissed.title,
-        detail: toast.unoMissed.detail(event.count),
-      }
     case 'seatDisconnected':
-      return { tone: 'bad', ...toast.lostConnection }
     case 'seatLeft':
-      return { tone: 'bad', ...toast.playerLeft }
-    case 'roundEnded':
-      return event.winner === null
-        ? { tone: 'bad', ...toast.roundAbandoned }
-        : { tone: 'info', ...toast.roundOver }
-    case 'matchEnded':
-      return { tone: 'info', ...toast.matchOver }
-    case 'roundStarted':
-      return { tone: 'info', ...toast.nextRound }
+      return { tone: 'bad', title: text, detail: '' }
+    case 'botTookOver':
+    case 'turnTimedOut':
+      return { tone: 'warn', title: text, detail: '' }
     case 'gameRestarted':
-      return { tone: 'info', ...toast.newMatch }
+      return { tone: 'info', title: text, detail: '' }
     default:
       return null
   }
@@ -121,6 +106,9 @@ export function gameReducer(state: ClientState, action: Action, messages: Messag
         error: null,
       }
 
+    case 'seat':
+      return { ...state, seat: action.seat }
+
     case 'lobby':
       // Never demotes the screen: a lobby update arriving mid-game must not yank
       // the player off the table.
@@ -134,7 +122,12 @@ export function gameReducer(state: ClientState, action: Action, messages: Messag
 
     case 'event': {
       const withEvent = withFeed(state, { kind: 'event', event: action.event })
-      const toast = toastFor(action.event, messages)
+      const seats = state.view?.seats ?? state.lobby?.seats ?? []
+      const name = (seat: number) => {
+        const info = seats.find((s) => s.seat === seat)
+        return info && info.kind !== 'empty' ? info.name : `#${seat + 1}`
+      }
+      const toast = toastFor(action.event, messages, name)
       if (toast === null) return withEvent
       const toasts = [...withEvent.toasts, { ...toast, id: withEvent.nextId }]
       return {

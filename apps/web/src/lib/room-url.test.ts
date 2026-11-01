@@ -45,18 +45,20 @@ describe('writeRoomCodeToUrl', () => {
 
 describe('roomLink', () => {
   it('carries the code as a query parameter', () => {
-    expect(roomLink('K7QM2X', 'https://uno.example/')).toBe('https://uno.example/?room=K7QM2X')
+    expect(roomLink('K7QM2X', 'https://belote.example/')).toBe(
+      'https://belote.example/?room=K7QM2X',
+    )
   })
 
   it('round-trips through the reader, so the link actually joins the table', () => {
-    const link = roomLink('K7QM2X', 'https://uno.example/')
+    const link = roomLink('K7QM2X', 'https://belote.example/')
     expect(readRoomCodeFromUrl(new URL(link).search)).toBe('K7QM2X')
   })
 
   it('replaces a code already in the address rather than appending a second one', () => {
     // The lobby's own URL already carries one, courtesy of writeRoomCodeToUrl.
-    expect(roomLink('ABC234', 'https://uno.example/?room=K7QM2X')).toBe(
-      'https://uno.example/?room=ABC234',
+    expect(roomLink('ABC234', 'https://belote.example/?room=K7QM2X')).toBe(
+      'https://belote.example/?room=ABC234',
     )
   })
 
@@ -67,8 +69,8 @@ describe('roomLink', () => {
   })
 
   it('drops a fragment so it cannot ride along into every invitation', () => {
-    expect(roomLink('K7QM2X', 'https://uno.example/#somewhere')).toBe(
-      'https://uno.example/?room=K7QM2X',
+    expect(roomLink('K7QM2X', 'https://belote.example/#somewhere')).toBe(
+      'https://belote.example/?room=K7QM2X',
     )
   })
 })

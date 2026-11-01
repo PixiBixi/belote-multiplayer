@@ -44,14 +44,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     return (
       <main className="home">
-        <h1>UNO</h1>
+        <h1 className="brand">{t.brand}</h1>
         <p className="banner banner-bad" role="alert">
-          {t.crash.heading}
+          {t.crash.title}
         </p>
         <p className="hint">{t.crash.seatHeld}</p>
         {roomCode !== null && (
           <div className="stack">
-            <span className="eyebrow">{t.lobby.gameCodeLabel}</span>
+            <span className="eyebrow">{t.home.codeLabel}</span>
             <p className="code-display">{roomCode}</p>
           </div>
         )}

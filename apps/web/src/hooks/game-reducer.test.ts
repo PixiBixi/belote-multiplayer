@@ -1,7 +1,7 @@
-import { DEFAULT_TABLE_RULES } from '@belote/engine'
-import { DEFAULT_MATCH_GOAL, type LobbyView, type PlayerView } from '@belote/protocol'
+import type { PlayerView } from '@belote/protocol'
 import { describe, expect, it } from 'vitest'
 import { CATALOGUES, type Messages } from '../i18n/index.js'
+import { SEATS, doneGame, lobbyView, viewOf } from '../test-fixtures.js'
 import {
   FEED_LIMIT,
   gameReducer as reduce,
@@ -10,27 +10,16 @@ import {
   type ClientState,
 } from './game-reducer.js'
 
-/* The catalogue is a parameter, exactly as `describeEvent` takes one: the reducer
-   is pure and knows no React, so it cannot reach a context. Defaulted to English
-   here only so the cases that are not about language read as sentences. */
+/* The catalogue is a parameter: the reducer is pure and knows no React. French by default,
+   the reference language. */
 const gameReducer = (
   state: ClientState,
   action: Action,
-  messages: Messages = CATALOGUES.en,
+  messages: Messages = CATALOGUES.fr,
 ): ClientState => reduce(state, action, messages)
 
-const lobby: LobbyView = {
-  roomCode: 'ABC234',
-  hostSeat: 0,
-  seats: [{ seat: 0, name: 'Ana', status: 'active' }],
-  canStart: false,
-  goal: DEFAULT_MATCH_GOAL,
-  pace: null,
-  rules: DEFAULT_TABLE_RULES,
-  configurable: true,
-}
-
-const view = { phase: 'playing', winner: null } as PlayerView
+const lobby = lobbyView()
+const view: PlayerView = viewOf(doneGame(), 0)
 
 const joined = () => gameReducer(initialState, { type: 'joined', roomCode: 'ABC234', seat: 0 })
 const onTable = () => gameReducer(joined(), { type: 'view', view })
@@ -55,6 +44,12 @@ describe('gameReducer', () => {
     expect(next.view).toBe(view)
   })
 
+  it('follows a seat change without leaving the lobby', () => {
+    const next = gameReducer(joined(), { type: 'seat', seat: 2 })
+    expect(next.seat).toBe(2)
+    expect(next.screen).toBe('lobby')
+  })
+
   it('keeps the table screen when a game finishes', () => {
     const finished = gameReducer(onTable(), {
       type: 'view',
@@ -71,184 +66,97 @@ describe('gameReducer', () => {
   })
 
   it('appends chat and events to one feed, in order', () => {
-    const withChat = gameReducer(initialState, {
-      type: 'chat',
-      message: { seat: 1, name: 'Ben', text: 'hi' },
-    })
-    const withBoth = gameReducer(withChat, { type: 'event', event: { type: 'unoCalled', seat: 1 } })
-    expect(withBoth.feed.map((entry) => entry.kind)).toEqual(['chat', 'event'])
+    let state = joined()
+    state = gameReducer(state, { type: 'event', event: { type: 'gameRestarted' } })
+    state = gameReducer(state, { type: 'chat', message: { seat: 1, name: 'Ben', text: 'hi' } })
+    expect(state.feed.map((entry) => entry.kind)).toEqual(['event', 'chat'])
   })
 
   it('gives every feed entry a distinct id', () => {
-    let state = initialState
-    for (let i = 0; i < 5; i++) {
-      state = gameReducer(state, { type: 'event', event: { type: 'unoCalled', seat: 0 } })
+    let state = joined()
+    for (let i = 0; i < 5; i += 1) {
+      state = gameReducer(state, { type: 'chat', message: { seat: 0, name: 'Ana', text: 'x' } })
     }
     expect(new Set(state.feed.map((entry) => entry.id)).size).toBe(5)
   })
 
-  it('caps the feed so a long game cannot grow without bound', () => {
-    let state = initialState
-    for (let i = 0; i < FEED_LIMIT + 30; i++) {
-      state = gameReducer(state, { type: 'event', event: { type: 'unoCalled', seat: 0 } })
+  it('caps the feed and keeps the newest entries when it trims', () => {
+    let state = joined()
+    for (let i = 0; i < FEED_LIMIT + 10; i += 1) {
+      state = gameReducer(state, {
+        type: 'chat',
+        message: { seat: 0, name: 'Ana', text: String(i) },
+      })
     }
     expect(state.feed).toHaveLength(FEED_LIMIT)
+    const last = state.feed.at(-1)
+    expect(last?.kind === 'chat' && last.text).toBe(String(FEED_LIMIT + 9))
   })
 
-  it('keeps the newest entries when it trims', () => {
-    let state = initialState
-    for (let i = 0; i < FEED_LIMIT + 5; i++) {
-      state = gameReducer(state, { type: 'chat', message: { seat: 0, name: 'a', text: `m${i}` } })
-    }
-    const last = state.feed[state.feed.length - 1]
-    expect(last?.kind === 'chat' && last.text).toBe(`m${FEED_LIMIT + 4}`)
-  })
-
-  it('records an error and clears it on the next success', () => {
-    const failed = gameReducer(initialState, { type: 'error', message: 'Room is full' })
-    expect(failed.error).toBe('Room is full')
-    expect(gameReducer(failed, { type: 'joined', roomCode: 'ABC234', seat: 1 }).error).toBeNull()
+  it('records an error and clears it on the next view', () => {
+    const failed = gameReducer(joined(), { type: 'error', message: 'nope' })
+    expect(failed.error).toBe('nope')
+    expect(gameReducer(failed, { type: 'view', view }).error).toBeNull()
   })
 
   it('marks the connection lost without discarding the last view', () => {
     const lost = gameReducer(onTable(), { type: 'connection', connection: 'lost' })
     expect(lost.connection).toBe('lost')
     expect(lost.view).toBe(view)
-    expect(lost.screen).toBe('table')
   })
 
-  it('returns home and forgets the room when the player leaves', () => {
-    const left = gameReducer(onTable(), { type: 'left' })
+  it('returns home and forgets the room when the player leaves, keeping the connection', () => {
+    const open = gameReducer(onTable(), { type: 'connection', connection: 'open' })
+    const left = gameReducer(open, { type: 'left' })
     expect(left.screen).toBe('home')
     expect(left.roomCode).toBeNull()
     expect(left.view).toBeNull()
-    expect(left.feed).toEqual([])
-  })
-
-  it('keeps the connection state across leaving, since the socket is still up', () => {
-    const open = gameReducer(onTable(), { type: 'connection', connection: 'open' })
-    expect(gameReducer(open, { type: 'left' }).connection).toBe('open')
+    expect(left.connection).toBe('open')
   })
 
   it('raises a toast for a notable event and none for a routine one', () => {
-    const notable = gameReducer(initialState, {
+    const quiet = gameReducer(onTable(), {
       type: 'event',
-      event: { type: 'unoPenalty', seat: 0, count: 2 },
+      event: { type: 'trickWon', seat: 1, points: 10 },
     })
-    expect(notable.toasts).toHaveLength(1)
+    expect(quiet.toasts).toHaveLength(0)
 
-    const routine = gameReducer(initialState, {
-      type: 'event',
-      event: { type: 'cardsDrawn', seat: 1, count: 1 },
-    })
-    expect(routine.toasts).toHaveLength(0)
+    const loud = gameReducer(onTable(), { type: 'event', event: { type: 'seatLeft', seat: 1 } })
+    expect(loud.toasts).toHaveLength(1)
+    expect(loud.toasts[0]?.tone).toBe('bad')
   })
 
-  it('distinguishes an abandoned game from a win in its toast', () => {
-    const abandoned = gameReducer(initialState, {
-      type: 'event',
-      event: { type: 'roundEnded', winner: null, awarded: [0, 0], scores: [0, 0] },
-    })
-    expect(abandoned.toasts[0]?.tone).toBe('bad')
-
-    const won = gameReducer(initialState, {
-      type: 'event',
-      event: { type: 'roundEnded', winner: 1, awarded: [0, 7], scores: [0, 7] },
-    })
-    expect(won.toasts[0]?.tone).toBe('info')
+  it('names the seat in a toast from the roster, in the language it was handed', () => {
+    const fr = gameReducer(onTable(), { type: 'event', event: { type: 'botTookOver', seat: 1 } })
+    expect(fr.toasts[0]?.title).toBe('Un bot prend la place de Ben.')
+    const en = gameReducer(
+      onTable(),
+      { type: 'event', event: { type: 'botTookOver', seat: 1 } },
+      CATALOGUES.en,
+    )
+    expect(en.toasts[0]?.title).toBe('A bot takes Ben’s seat.')
+    expect(SEATS[1]).toBeDefined()
   })
 
   it('dismisses a toast by id', () => {
-    const withToast = gameReducer(initialState, {
-      type: 'event',
-      event: { type: 'roundEnded', winner: 1, awarded: [0, 7], scores: [0, 7] },
-    })
-    const id = withToast.toasts[0]?.id
-    if (id === undefined) throw new Error('expected a toast')
-    expect(gameReducer(withToast, { type: 'dismissToast', id }).toasts).toEqual([])
+    const raised = gameReducer(onTable(), { type: 'event', event: { type: 'seatLeft', seat: 1 } })
+    const id = raised.toasts[0]?.id ?? -1
+    expect(gameReducer(raised, { type: 'dismissToast', id }).toasts).toHaveLength(0)
   })
 
   it('caps the toasts so they cannot bury the table', () => {
-    let state = initialState
-    for (let i = 0; i < 10; i++) {
-      state = gameReducer(state, { type: 'event', event: { type: 'seatLeft', seat: 0 } })
+    let state = onTable()
+    for (let i = 0; i < 10; i += 1) {
+      state = gameReducer(state, { type: 'event', event: { type: 'seatLeft', seat: 1 } })
     }
     expect(state.toasts.length).toBeLessThanOrEqual(4)
   })
 
-  it('writes its toasts in the language it was handed, title and detail both', () => {
-    /* The toasts were the last English left on a French table. They are text a
-       player reads, so they belong in the catalogues like every other sentence -
-       and the reducer takes the catalogue rather than importing one, because a
-       module that picks its own language cannot be switched at runtime. */
-    const fr = reduce(
-      initialState,
-      { type: 'event', event: { type: 'roundEnded', winner: 1, awarded: [0, 7], scores: [0, 7] } },
-      CATALOGUES.fr,
-    )
-    expect(fr.toasts[0]?.title).toBe(CATALOGUES.fr.toast.roundOver.title)
-    expect(fr.toasts[0]?.detail).toBe(CATALOGUES.fr.toast.roundOver.detail)
-    expect(fr.toasts[0]?.title).not.toMatch(/round/i)
-
-    const en = reduce(
-      initialState,
-      { type: 'event', event: { type: 'roundEnded', winner: 1, awarded: [0, 7], scores: [0, 7] } },
-      CATALOGUES.en,
-    )
-    expect(en.toasts[0]?.title).toBe('Round over')
-  })
-
-  it('counts the UNO penalty by the language’s own plural rule', () => {
-    // French keeps the singular at zero and one; English does not. The detail is a
-    // whole sentence per language rather than a count with a suffix bolted on.
-    const one = reduce(
-      initialState,
-      { type: 'event', event: { type: 'unoPenalty', seat: 0, count: 1 } },
-      CATALOGUES.fr,
-    )
-    expect(one.toasts[0]?.detail).toContain('1 carte')
-
-    const two = reduce(
-      initialState,
-      { type: 'event', event: { type: 'unoPenalty', seat: 0, count: 2 } },
-      CATALOGUES.fr,
-    )
-    expect(two.toasts[0]?.detail).toContain('2 cartes')
-  })
-
-  it('leaves no English literal in any toast it can raise', () => {
-    /* The sweep that missed these searched `components/` and `screens/` only. This
-       asserts the property directly instead: every toast the reducer can produce,
-       in French, with nothing from the English catalogue in it. */
-    const events: Parameters<typeof reduce>[1][] = [
-      { type: 'event', event: { type: 'unoPenalty', seat: 0, count: 2 } },
-      { type: 'event', event: { type: 'seatDisconnected', seat: 1 } },
-      { type: 'event', event: { type: 'seatLeft', seat: 1 } },
-      {
-        type: 'event',
-        event: { type: 'roundEnded', winner: null, awarded: [0, 0], scores: [0, 0] },
-      },
-      { type: 'event', event: { type: 'roundEnded', winner: 1, awarded: [0, 7], scores: [0, 7] } },
-      { type: 'event', event: { type: 'matchEnded', winners: [1], scores: [0, 7] } },
-      { type: 'event', event: { type: 'roundStarted', round: 2 } },
-      { type: 'event', event: { type: 'gameRestarted' } },
-    ]
-    const english = new Set<string>()
-    for (const entry of Object.values(CATALOGUES.en.toast)) {
-      english.add(entry.title)
-    }
-
-    for (const action of events) {
-      const toast = reduce(initialState, action, CATALOGUES.fr).toasts[0]
-      if (toast === undefined) throw new Error('expected a toast')
-      expect(english.has(toast.title)).toBe(false)
-      expect(toast.detail.length).toBeGreaterThan(0)
-    }
-  })
-
   it('never mutates the state it is given', () => {
-    const before = structuredClone(initialState)
-    gameReducer(initialState, { type: 'chat', message: { seat: 0, name: 'a', text: 'x' } })
-    expect(initialState).toEqual(before)
+    const before = onTable()
+    const snapshot = JSON.stringify(before)
+    gameReducer(before, { type: 'event', event: { type: 'seatLeft', seat: 1 } })
+    gameReducer(before, { type: 'chat', message: { seat: 0, name: 'Ana', text: 'x' } })
+    expect(JSON.stringify(before)).toBe(snapshot)
   })
 })

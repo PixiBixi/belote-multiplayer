@@ -1,9 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { CardThemeProvider } from '../components/CardThemeProvider.js'
-import { CARD_THEMES } from '../lib/card-themes.js'
-import { readCardTheme, writeCardTheme } from '../lib/preferences.js'
+import { LocaleProvider } from '../i18n/LocaleProvider.js'
 import { Home } from './Home.js'
 
 const setup = (overrides: Partial<Parameters<typeof Home>[0]> = {}) => {
@@ -18,149 +16,76 @@ const setup = (overrides: Partial<Parameters<typeof Home>[0]> = {}) => {
   return props
 }
 
+beforeEach(() => {
+  window.localStorage.clear()
+})
+
 describe('Home', () => {
-  it('will not create a game without a name', async () => {
+  it('will not create or play solo without a name', async () => {
     const { onCreate } = setup()
-    await userEvent.click(screen.getByRole('button', { name: /create/i }))
+    expect(screen.getByRole('button', { name: /créer une table/i }).hasAttribute('disabled')).toBe(
+      true,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /créer une table/i }))
+    await userEvent.click(screen.getByRole('button', { name: /jouer contre l’ordinateur/i }))
     expect(onCreate).not.toHaveBeenCalled()
   })
 
-  it('creates a game with a trimmed name and nothing else to say', async () => {
-    /* A name is all this screen collects now. The table is configured in the lobby, where
-       the host adjusts it while waiting and everybody about to play can read it. */
+  it('creates a table with a trimmed name, not solo', async () => {
     const { onCreate } = setup()
-    await userEvent.type(screen.getByLabelText(/your name/i), '  Ana  ')
-    await userEvent.click(screen.getByRole('button', { name: /create/i }))
-    expect(onCreate).toHaveBeenCalledWith('Ana')
+    await userEvent.type(screen.getByLabelText(/ton prénom/i), '  Ana  ')
+    await userEvent.click(screen.getByRole('button', { name: /créer une table/i }))
+    expect(onCreate).toHaveBeenCalledWith('Ana', false)
   })
 
-  it('configures nothing about the table', () => {
-    /* Measured on v1.1.0 this screen carried 21 controls and put the game-code field
-       last, under everything a joining player has no use for - and on three players, two
-       are joining. Each of these was a control here and is one in the lobby now. */
+  it('starts a solo game against bots', async () => {
+    const { onCreate } = setup()
+    await userEvent.type(screen.getByLabelText(/ton prénom/i), 'Ana')
+    await userEvent.click(screen.getByRole('button', { name: /jouer contre l’ordinateur/i }))
+    expect(onCreate).toHaveBeenCalledWith('Ana', true)
+  })
+
+  it('remembers the name for next time', async () => {
     setup()
-    for (const gone of [
-      /seven-zero/i,
-      /jump-in/i,
-      /call out/i,
-      /drawn card/i,
-      /clock on every turn/i,
-      /winning score/i,
-    ]) {
-      expect(screen.queryByLabelText(gone), String(gone)).toBeNull()
-    }
-    expect(screen.queryByText(/how the match ends/i)).toBeNull()
-    expect(screen.queryByText(/table rules/i)).toBeNull()
+    await userEvent.type(screen.getByLabelText(/ton prénom/i), 'Ana')
+    await userEvent.click(screen.getByRole('button', { name: /créer une table/i }))
+    expect(window.localStorage.getItem('belote.pref.name')).toBe('Ana')
   })
 
-  it('keeps the two per-player preferences, which are not table configuration', () => {
-    /* Card theme and language change what one person sees; two people at the same table
-       can run different ones and the game is identical. Nothing about them crosses the
-       wire, so they have no business in a lobby the server broadcasts to everybody. */
-    setup()
-    expect(screen.getByText(/language/i)).toBeTruthy()
-    expect(screen.getByRole('group', { name: /card theme/i })).toBeTruthy()
-  })
-
-  it('caps the name at the protocol limit', async () => {
-    setup()
-    const field = screen.getByLabelText<HTMLInputElement>(/your name/i)
-    await userEvent.type(field, 'x'.repeat(40))
-    expect(field.value).toHaveLength(20)
-  })
-
-  it('joins with an uppercased code', async () => {
+  it('joins with an upper-cased code once it is the full length', async () => {
     const { onJoin } = setup()
-    await userEvent.type(screen.getByLabelText(/your name/i), 'Ben')
-    await userEvent.type(screen.getByLabelText(/game code/i), 'abc234')
-    await userEvent.click(screen.getByRole('button', { name: /join/i }))
+    await userEvent.type(screen.getByLabelText(/ton prénom/i), 'Ben')
+    const join = screen.getByRole('button', { name: /^rejoindre$/i })
+    await userEvent.type(screen.getByLabelText(/code de la table/i), 'abc23')
+    expect(join.hasAttribute('disabled')).toBe(true)
+    await userEvent.type(screen.getByLabelText(/code de la table/i), '4')
+    await userEvent.click(join)
     expect(onJoin).toHaveBeenCalledWith('ABC234', 'Ben')
   })
 
-  it('will not join on a short code', async () => {
-    const { onJoin } = setup()
-    await userEvent.type(screen.getByLabelText(/your name/i), 'Ben')
-    await userEvent.type(screen.getByLabelText(/game code/i), 'ABC')
-    await userEvent.click(screen.getByRole('button', { name: /join/i }))
-    expect(onJoin).not.toHaveBeenCalled()
+  it('offers only joining when arriving on an invite link', () => {
+    setup({ prefilledCode: 'ABC234' })
+    expect(screen.queryByRole('button', { name: /créer une table/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /jouer contre l’ordinateur/i })).toBeNull()
+    expect(screen.getByLabelText<HTMLInputElement>(/code de la table/i).value).toBe('ABC234')
   })
 
-  it('will not join without a name, even with a valid code', async () => {
-    const { onJoin } = setup()
-    await userEvent.type(screen.getByLabelText(/game code/i), 'ABC234')
-    await userEvent.click(screen.getByRole('button', { name: /join/i }))
-    expect(onJoin).not.toHaveBeenCalled()
+  it('shows an error from the server', () => {
+    setup({ error: 'La table est complète.' })
+    expect(screen.getByRole('alert').textContent).toBe('La table est complète.')
   })
 
-  it('prefills a code taken from the URL', () => {
-    setup({ prefilledCode: 'K7QM2X' })
-    expect(screen.getByLabelText<HTMLInputElement>(/game code/i).value).toBe('K7QM2X')
-  })
-
-  it('shows a server error as a live region', () => {
-    setup({ error: 'That game already has four players.' })
-    expect(screen.getByRole('alert').textContent).toContain('four players')
-  })
-
-  it('shows no alert when there is no error', () => {
-    setup()
-    expect(screen.queryByRole('alert')).toBeNull()
-  })
-})
-
-describe('the card theme previews', () => {
-  beforeEach(() => {
-    window.localStorage.clear()
-  })
-
-  const setupThemes = () =>
+  it('switches language on request, and remembers it', async () => {
     render(
-      <CardThemeProvider>
+      <LocaleProvider>
         <Home onCreate={vi.fn()} onJoin={vi.fn()} error={null} prefilledCode={null} />
-      </CardThemeProvider>,
+      </LocaleProvider>,
     )
-
-  it('offers one preview per theme, named for anyone who cannot see them', () => {
-    setupThemes()
-    for (const theme of CARD_THEMES) {
-      expect(screen.getByRole('button', { name: new RegExp(theme, 'i') })).toBeTruthy()
-    }
-  })
-
-  it('renders each preview with the real Card component, so it cannot drift', () => {
-    /* A preview drawn any other way is a second implementation of the card, and the
-       two would part company the first time either changed. Classic is the only
-       theme with the rotated oval, and exactly one preview has one. */
-    const { container } = setupThemes()
-    const previews = container.querySelectorAll('.theme-swatch svg[role="img"]')
-    expect(previews).toHaveLength(CARD_THEMES.length)
-    expect(container.querySelectorAll('.theme-swatch ellipse')).toHaveLength(1)
-  })
-
-  it('keeps the previews out of the way of a screen reader', () => {
-    // The button says which theme it is. The card inside would otherwise announce
-    // itself as a Red 7, which is not what pressing it does.
-    const { container } = setupThemes()
-    for (const preview of container.querySelectorAll('.theme-swatch-card')) {
-      expect(preview.getAttribute('aria-hidden')).toBe('true')
-    }
-  })
-
-  it('writes the preference when a preview is picked', async () => {
-    setupThemes()
-    await userEvent.click(screen.getByRole('button', { name: /letterpress/i }))
-    expect(readCardTheme()).toBe('letterpress')
-    expect(screen.getByRole('button', { name: /letterpress/i }).getAttribute('aria-pressed')).toBe(
-      'true',
-    )
-  })
-
-  it('starts on whatever the player last chose', () => {
-    writeCardTheme('neon')
-    setupThemes()
-    expect(screen.getByRole('button', { name: /neon/i }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('button', { name: /classic/i }).getAttribute('aria-pressed')).toBe(
-      'false',
-    )
+    const english = screen.getByRole('button', { name: 'English' })
+    await userEvent.click(english)
+    expect(screen.getByLabelText('Your name')).toBeTruthy()
+    expect(english.getAttribute('aria-pressed')).toBe('true')
+    expect(window.localStorage.getItem('belote.pref.locale')).toBe('en')
+    expect(document.documentElement.lang).toBe('en')
   })
 })

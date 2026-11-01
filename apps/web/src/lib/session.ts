@@ -1,4 +1,4 @@
-const PREFIX = 'uno.session.'
+const PREFIX = 'belote.session.'
 
 const keyFor = (roomCode: string): string => `${PREFIX}${roomCode.toUpperCase()}`
 

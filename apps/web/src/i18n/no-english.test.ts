@@ -50,11 +50,10 @@ const MODULES = [
 /**
  * The brand, and the one word allowed to be identical in every language.
  *
- * It is the name printed on the box and on the back of every card - `CardBack` draws
- * it as artwork and `Home` sets it as the page's own title. Translating it would be
+ * The game's own name, and a proper term of the game itself. Translating it would be
  * translating a logo.
  */
-const ALLOWED = new Set(['UNO'])
+const ALLOWED = new Set(['Belote'])
 
 /** JSX attributes whose value a person reads or a screen reader speaks. */
 const SPEAKING_ATTRIBUTES = new Set([
@@ -126,18 +125,18 @@ const TRAILING_ELLIPSIS = new RegExp('[A-Za-z]…')
  * A phrase - two words with a space between them. A trailing ellipsis, which in this
  * codebase only ever ends something said to a player. Or a single word that is
  * SHOUTED or Capitalised, because that is how a lone word gets written when it is
- * meant to be read: `PlayEffects` kept `WILD`, `SKIP` and `REVERSE` exactly that way,
- * and a two-word rule would have walked past all three.
+ * meant to be read: a burst of `SKIP` or `REVERSE` written that way would
+ * walk past a two-word rule.
  *
  * Lower-case single words are deliberately not flagged. `'circle'`, `'stroke'`,
- * `'wild4'` and `'dealt'` are the union tags and CSS keywords these modules are built
+ * `'bidding'` and `'playing'` are the union tags and CSS keywords these modules are built
  * from, and flagging them would make the guard unusable - which is how a guard ends
  * up deleted rather than obeyed.
  */
 const readsAsEnglish = (value: string): boolean => {
   const word = value.trim()
   if (MACHINE_WORDS.has(word)) return false
-  /* Punctuation stripped before the single-word test, because `'UNO!'` is a word with
+  /* Punctuation stripped before the single-word test, because `'Coinche!'` is a word with
      an exclamation on it and French writes that exclamation with a space in front. */
   const bare = word.replace(/^[^A-Za-z]+/, '').replace(/[^A-Za-z]+$/, '')
   if (/^[A-Za-z]{3,}$/.test(bare) && (bare === bare.toUpperCase() || /^[A-Z][a-z]+$/.test(bare))) {
@@ -228,8 +227,8 @@ describe('the sweep itself', () => {
   it('actually read the rendering layer, so the assertions below mean something', () => {
     // A guard that silently scanned nothing would pass every assertion in this file,
     // which is the failure mode the tokens test learned the hard way.
-    expect(MODULES.length).toBeGreaterThan(15)
-    expect(MODULES.some((file) => file.endsWith('Card.tsx'))).toBe(true)
+    expect(MODULES.length).toBeGreaterThan(10)
+    expect(MODULES.some((file) => file.endsWith('PlayingCard.tsx'))).toBe(true)
     expect(MODULES.some((file) => file.endsWith('Table.tsx'))).toBe(true)
     expect(MODULES.some((file) => file.endsWith('App.tsx'))).toBe(true)
   })
@@ -245,14 +244,14 @@ describe('the sweep itself', () => {
     expect(readsAsEnglish('the host')).toBe(true)
     expect(readsAsEnglish('Cancel')).toBe(true)
     expect(readsAsEnglish('REVERSE')).toBe(true)
-    expect(readsAsEnglish('UNO!')).toBe(true)
+    expect(readsAsEnglish('Coinche!')).toBe(true)
 
     // And does not fire on the machine vocabulary it sits next to.
     expect(readsAsEnglish('M18 6 6 18M6 6l12 12')).toBe(false)
     expect(readsAsEnglish('rotate(-27 60 84)')).toBe(false)
     expect(readsAsEnglish('var(--red)')).toBe(false)
     expect(readsAsEnglish('circle')).toBe(false)
-    expect(readsAsEnglish('wild4')).toBe(false)
+    expect(readsAsEnglish('bidding')).toBe(false)
     expect(readsAsEnglish('Escape')).toBe(false)
     expect(hasWords('+2')).toBe(false)
   })
@@ -267,7 +266,7 @@ describe('no component or screen holds a user-facing English literal', () => {
   })
 
   it('holds no phrase at all, even one that never reaches an attribute', () => {
-    /* `Seat.tsx` kept its two status notes in a `Record<SeatStatus, string>` and
+    /* A component once kept its two status notes in a `Record<SeatStatus, string>` and
        rendered them through a variable, which no check on JSX or on attributes could
        have seen. A phrase in one of these modules is a phrase in the wrong file
        whatever route it takes to the screen. */

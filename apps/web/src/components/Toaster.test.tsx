@@ -6,8 +6,8 @@ import { TOAST_MS, Toaster } from './Toaster.js'
 const toast = (over: Partial<Toast> = {}): Toast => ({
   id: 1,
   tone: 'info',
-  title: 'Round over',
-  detail: 'The points go to whoever went out.',
+  title: 'Donne terminée',
+  detail: 'Les points vont à l’équipe gagnante.',
   ...over,
 })
 
@@ -77,7 +77,7 @@ describe('Toaster', () => {
     const onDismiss = vi.fn()
     render(<Toaster toasts={[toast()]} onDismiss={onDismiss} />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Round over/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Donne terminée/ }))
     expect(onDismiss).toHaveBeenCalledWith(1)
   })
 
