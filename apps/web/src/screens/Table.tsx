@@ -341,7 +341,13 @@ function ContractChip({ view, name }: { view: PlayerView; name: (seat: number) =
       <span className="contract-text">
         <strong className="contract-long">{t.table.contractLine(c.value, c.trump)}</strong>
         {c.value !== null && <strong className="contract-short">{c.value}</strong>}
-        <small>{c.taker === null ? t.table.vacheLabel : t.table.takerLabel(name(c.taker))}</small>
+        <small>
+          {c.taker === null
+            ? t.table.vacheLabel
+            : c.taker === view.you.seat
+              ? t.table.youTook
+              : t.table.takerLabel(name(c.taker))}
+        </small>
       </span>
       {c.multiplier > 1 && (
         <span className="contract-mult">
@@ -411,7 +417,7 @@ function SeatPlate({
           </span>
           <span className="plate-tags">
             {hand.dealer === seat && <span className="tag tag-dealer">{t.table.dealer}</span>}
-            {isTaker && <span className="tag tag-taker">★</span>}
+            {isTaker && <span className="tag tag-taker">★ {t.table.taker}</span>}
             {info?.kind === 'bot' && (
               <span className="tag tag-bot">
                 {info.standingInFor ? t.table.standingInFor(info.standingInFor) : t.table.bot}

@@ -1571,16 +1571,14 @@ button:focus-visible {
 }
 
 .bid-tiles {
-  display: flex;
-  flex-wrap: wrap;
+  /* Fixed tracks, not flex-wrap: Safari wrapped even two tiles inside a fit-content panel. */
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), 76px);
   gap: 10px;
   justify-content: center;
 }
 
 .bid-tile {
-  /* Fixed width, never shrunk: the panel sizes to its content, so a shrinkable tile
-     collapsed until CARREAU overflowed it. Many tiles wrap instead. */
-  flex: 0 0 76px;
   height: 96px;
   display: grid;
   grid-template-rows: 1fr auto;
@@ -2375,11 +2373,16 @@ button:focus-visible {
   }
 
   .contract-text small {
-    display: none;
+    font-size: 0.66rem;
+  }
+
+  .contract-text > * {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .contract-text {
-    max-width: 72px;
+    max-width: 120px;
     font-size: 0.78rem;
     overflow: hidden;
     text-overflow: ellipsis;

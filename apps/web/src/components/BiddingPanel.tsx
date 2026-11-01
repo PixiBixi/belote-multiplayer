@@ -1,6 +1,6 @@
 import type { Move, Trump } from '@belote/engine'
 import type { HandView } from '@belote/protocol'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import { useMessages } from '../i18n/index.js'
 import { TrumpGlyph } from './PlayingCard.js'
 
@@ -20,10 +20,13 @@ export function BiddingPanel({ hand, moves, variant, onMove }: Props) {
 
   if (variant === 'classic') {
     const takes = moves.filter((m): m is Extract<Move, { type: 'take' }> => m.type === 'take')
+    const tiles = takes.length + (canPass ? 1 : 0)
+    // One row up to four tiles, then rows of three: six tiles never fit a phone width.
+    const cols = { '--cols': tiles <= 4 ? tiles : 3 } as CSSProperties
     return (
       <div className="bid-panel classic" role="group" aria-label={t.table.chooseTrump}>
         <p className="bid-hint">{hand.biddingRound === 1 ? t.table.roundOne : t.table.roundTwo}</p>
-        <div className="bid-tiles">
+        <div className="bid-tiles" style={cols}>
           {takes.map((m) => (
             <button
               key={m.trump}
