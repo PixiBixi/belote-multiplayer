@@ -56,11 +56,11 @@ The server owns the state and the rules and sends each player only what that pla
 
 Always on: belote-rebelote (20, announced automatically), dix de der, capot (250), dedans (the defence takes 162 plus every declaration) and litige (points held in reserve for the next hand).
 
-| Bot level | Plays                                                    |
-| --------- | -------------------------------------------------------- |
-| Easy      | a random legal move                                      |
-| Normal    | bids from hand strength, plays by heuristics             |
-| Hard      | as normal, and reads which suits each opponent is out of |
+| Bot level | Plays                                                                                                               |
+| --------- | ------------------------------------------------------------------------------------------------------------------- |
+| Easy      | a random legal move                                                                                                 |
+| Normal    | bids from hand strength, plays by heuristics                                                                        |
+| Hard      | bids like normal, then plays each card against 24 simulated deals of the hidden hands and keeps the best on average |
 
 ## Run it locally
 

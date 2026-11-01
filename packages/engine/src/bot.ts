@@ -1,5 +1,6 @@
 import { beats, cardPoints, isTrumpCard, strength, winningIndex } from './cards.js'
-import { legalMoves } from './game.js'
+import { applyMove, legalMoves } from './game.js'
+import { isMaster, knowledgeFor, sampleHands, type Knowledge } from './knowledge.js'
 import { nextInt } from './rng.js'
 import {
   SUITS,
@@ -13,12 +14,22 @@ import {
 
 export type BotLevel = 'easy' | 'normal' | 'hard'
 
+/** Deals a hard bot samples per card; a decision costs one rollout per card per deal. */
+export const MONTE_CARLO_SAMPLES = 24
+
 /**
  * Picks a move for `seat`, reading only what that seat may know: its own hand, the
  * turned card, the bidding and every card already played. `salt` varies easy bots'
- * choices without touching the game's own random state.
+ * choices without touching the game's own random state. `samples` sets how many deals
+ * a hard bot simulates per card; 0 falls back to its heuristic play.
  */
-export function botMove(state: GameState, seat: number, level: BotLevel, salt = 0): Move | null {
+export function botMove(
+  state: GameState,
+  seat: number,
+  level: BotLevel,
+  salt = 0,
+  samples = MONTE_CARLO_SAMPLES,
+): Move | null {
   const moves = legalMoves(state, seat)
   if (moves.length === 0) return null
   if (level === 'easy') {
@@ -32,6 +43,10 @@ export function botMove(state: GameState, seat: number, level: BotLevel, salt = 
   if (state.hand.phase === 'bidding') return chooseBid(state, seat, moves, level)
   const declare = moves.find((m) => m.type === 'declare')
   if (declare) return declare
+  if (level === 'hard')
+    return (
+      monteCarloPlay(state, seat, moves, salt, samples) ?? choosePlay(state, seat, moves, level)
+    )
   return choosePlay(state, seat, moves, level)
 }
 
@@ -170,44 +185,6 @@ function chooseBid(state: GameState, seat: number, moves: Move[], level: BotLeve
 
 /* ---------- card play ---------- */
 
-type Knowledge = {
-  played: Set<string>
-  /** Suits each seat has shown it no longer holds. */
-  voids: Set<Suit>[]
-}
-
-function gather(state: GameState, inferVoids: boolean): Knowledge {
-  const played = new Set<string>()
-  const voids: Set<Suit>[] = [new Set(), new Set(), new Set(), new Set()]
-  const trump = state.hand.contract?.trump ?? 'SA'
-  const tricks = [...state.hand.tricks.map((t) => t.cards), state.hand.trick]
-  for (const cards of tricks) {
-    const led = cards[0]?.card.suit
-    for (const p of cards) {
-      played.add(p.card.id)
-      if (inferVoids && led && p.card.suit !== led) {
-        voids[p.seat]?.add(led)
-        // A seat that discarded rather than trumping has no trump left (unless it pissed).
-        if (trump !== 'AT' && trump !== 'SA' && p.card.suit !== trump && !state.rules.pisse)
-          voids[p.seat]?.add(trump)
-      }
-    }
-  }
-  return { played, voids }
-}
-
-/** True when nothing still out can beat `card` in its own suit. */
-function isMaster(card: Card, trump: Trump, k: Knowledge, hand: readonly Card[]): boolean {
-  const held = new Set<string>(hand.map((c) => c.id))
-  for (const rank of ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'] as const) {
-    const id = `${rank}${card.suit}`
-    if (k.played.has(id) || held.has(id)) continue
-    const other = { id, suit: card.suit, rank } as Card
-    if (strength(other, trump) > strength(card, trump)) return false
-  }
-  return true
-}
-
 function choosePlay(state: GameState, seat: number, moves: Move[], level: BotLevel): Move {
   const hand = state.hand
   const contract = hand.contract
@@ -219,7 +196,7 @@ function choosePlay(state: GameState, seat: number, moves: Move[], level: BotLev
   const fallback = plays[0] ?? moves[0] ?? { type: 'pass' }
   if (!contract || cards.length === 0) return fallback
   const trump = contract.trump
-  const k = gather(state, level === 'hard')
+  const k = knowledgeFor(state, seat)
   const pts = (c: Card) => cardPoints(c, trump)
   const asMove = (c: Card): Move => ({ type: 'play', cardId: c.id })
   const lowest = (cs: Card[]) =>
@@ -237,12 +214,10 @@ function choosePlay(state: GameState, seat: number, moves: Move[], level: BotLev
         [...k.played].filter((id) => id.endsWith(trump)).length
       : 0
     if (suitTrump && weTook && trumpsOut > 0) {
-      const masterTrump = cards.find((c) => c.suit === trump && isMaster(c, trump, k, own))
+      const masterTrump = cards.find((c) => c.suit === trump && isMaster(c, trump, k))
       if (masterTrump) return asMove(masterTrump)
     }
-    const masters = cards.filter(
-      (c) => !(suitTrump && c.suit === trump) && isMaster(c, trump, k, own),
-    )
+    const masters = cards.filter((c) => !(suitTrump && c.suit === trump) && isMaster(c, trump, k))
     if (masters.length > 0) return asMove(highest(masters))
     // Lead a low card from a suit where we hold no ten to lose.
     const safe = cards.filter((c) => !(suitTrump && c.suit === trump) && pts(c) === 0)
@@ -270,7 +245,7 @@ function choosePlay(state: GameState, seat: number, moves: Move[], level: BotLev
   const partnerSafe =
     partnerWinning &&
     (last ||
-      (isMaster(best.card, trump, k, own) &&
+      (isMaster(best.card, trump, k) &&
         !(
           suitTrump &&
           best.card.suit !== trump &&
@@ -281,7 +256,7 @@ function choosePlay(state: GameState, seat: number, moves: Move[], level: BotLev
   if (partnerSafe) {
     // Load the trick with points, but never waste a master card or a trump.
     const loadable = cards.filter(
-      (c) => !(suitTrump && c.suit === trump) && !(isMaster(c, trump, k, own) && c.suit !== led),
+      (c) => !(suitTrump && c.suit === trump) && !(isMaster(c, trump, k) && c.suit !== led),
     )
     return asMove(highest(loadable.length > 0 ? loadable : cards))
   }
@@ -292,7 +267,7 @@ function choosePlay(state: GameState, seat: number, moves: Move[], level: BotLev
       const nonTrump = winners.filter((c) => !(suitTrump && c.suit === trump))
       return asMove(nonTrump.length > 0 ? highest(nonTrump) : lowest(winners))
     }
-    const masterWinner = winners.find((c) => isMaster(c, trump, k, own))
+    const masterWinner = winners.find((c) => isMaster(c, trump, k))
     if (
       masterWinner &&
       (pts(masterWinner) >= 10 || hand.trick.some((p) => pts(p.card) >= 10) || suitTrump)
@@ -307,3 +282,59 @@ function choosePlay(state: GameState, seat: number, moves: Move[], level: BotLev
 }
 
 const nextSeatOf = (seat: number) => (seat + 1) % 4
+
+/* ---------- hard: Monte Carlo over the hidden hands ---------- */
+
+/**
+ * Tries each legal card against deals of the hidden hands that fit what this seat has
+ * seen, plays every deal out with normal bots, and keeps the card that scores best on
+ * average. Null when there is nothing to choose or no fitting deal turned up.
+ */
+function monteCarloPlay(
+  state: GameState,
+  seat: number,
+  moves: Move[],
+  salt: number,
+  samples: number,
+): Move | null {
+  if (samples <= 0 || state.hand.phase !== 'playing' || moves.length < 2) return null
+  if (moves.some((m) => m.type !== 'play')) return null
+  const k: Knowledge = knowledgeFor(state, seat)
+  const team = teamOf(seat)
+  const totals = moves.map(() => 0)
+  let rng = (state.rngState ^ Math.imul(salt + 1, 2654435761)) | 0
+  let deals = 0
+  for (let i = 0; i < samples; i++) {
+    const sample = sampleHands(state, k, rng)
+    if (sample === null) break
+    rng = sample.rngState
+    const world: GameState = { ...state, hand: { ...state.hand, hands: sample.hands } }
+    moves.forEach((move, m) => {
+      totals[m] = (totals[m] ?? 0) + rollout(world, seat, move, team)
+    })
+    deals++
+  }
+  if (deals === 0) return null
+  let best = 0
+  totals.forEach((t, m) => {
+    if (t > (totals[best] ?? -Infinity)) best = m
+  })
+  return moves[best] ?? null
+}
+
+/** Plays `move`, then normal bots to the end of the hand: the score margin for `team`. */
+function rollout(world: GameState, seat: number, move: Move, team: number): number {
+  const first = applyMove(world, seat, move)
+  if (!first.okay) return -Infinity
+  let state = first.value
+  for (let guard = 0; guard < 64 && state.hand.phase === 'playing'; guard++) {
+    const next = botMove(state, state.hand.currentSeat, 'normal')
+    if (next === null) break
+    const applied = applyMove(state, state.hand.currentSeat, next)
+    if (!applied.okay) break
+    state = applied.value
+  }
+  const scored = state.hand.result?.scored
+  if (scored === undefined) return 0
+  return (scored[team] ?? 0) - (scored[1 - team] ?? 0)
+}

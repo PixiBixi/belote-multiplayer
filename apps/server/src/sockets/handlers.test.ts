@@ -337,6 +337,19 @@ describe('leave and rejoin over the wire', () => {
     expect(lastView(host).seats[1]).toMatchObject({ kind: 'human', name: 'Ben' })
   })
 
+  it('gives a stand-in seat back to a join under the same name, from another browser', async () => {
+    const { host, guest, roomCode, guestToken } = await startTwoHumans()
+    expect(await emit<PlainAck>(guest, 'room:leave', {})).toEqual({ ok: true })
+    await until(() => lastView(host).seats[1]?.kind === 'bot', 'the bot view')
+
+    const back = newPlayer()
+    const ack = await emit<PlainAck>(back, 'room:join', { roomCode, playerName: 'Ben' })
+    expect(ack).toEqual({ ok: true, seat: 1, sessionToken: guestToken })
+    await until(() => back.views.length > 0, 'the reclaimed view')
+    expect(lastView(back).you.seat).toBe(1)
+    await until(() => lastViewSeat(host, 1) === 'active', 'the host view of the reclaimed seat')
+  })
+
   it('keeps the seat of a dropped connection and reports it disconnected', async () => {
     const { host, guest } = await startTwoHumans()
     guest.socket.disconnect()

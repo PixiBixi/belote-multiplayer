@@ -8,6 +8,7 @@ import {
   nextHand,
   ok,
   type BotLevel,
+  type GameRecord,
   type GameState,
   type Move,
   type Result,
@@ -80,6 +81,8 @@ export class Room {
   private readonly slots: Slot[] = Array.from({ length: SEAT_COUNT }, () => ({ kind: 'empty' }))
   private host = 0
   private game: GameState | null = null
+  /** Every step since the deal, so a reported bug can be replayed exactly. */
+  private record: GameRecord | null = null
   private pace: MatchPace
   private rules: TableRules
   /* Held, never computed: RoomManager hands the deadlines in, so no clock is read here. */
@@ -153,6 +156,16 @@ export class Room {
   }
 
   /** No human could ever come back: nobody sits here, or only bots (stand-ins included). */
+  /** The current game as a replayable record, or null before the first deal. */
+  get gameRecord(): GameRecord | null {
+    return this.record
+  }
+
+  /** True once the current game has a winner. */
+  get gameFinished(): boolean {
+    return this.game?.phase === 'finished'
+  }
+
   get abandoned(): boolean {
     return this.humanSeats().length === 0
   }
@@ -227,8 +240,11 @@ export class Room {
 
   /* ---------- lobby ---------- */
 
-  join(name: string, socketId: string): Result<{ seat: number; sessionToken: string }, ErrorCode> {
-    if (this.phase !== 'lobby') return err('game_already_started')
+  join(
+    name: string,
+    socketId: string,
+  ): Result<{ seat: number; sessionToken: string; reclaimed?: true }, ErrorCode> {
+    if (this.phase !== 'lobby') return this.reclaimByName(name, socketId)
     // Idempotent per socket: a double tap otherwise seats a ghost that never disconnects.
     const already = this.seatOfSocket(socketId)
     const existing = already === null ? undefined : this.slots[already]
@@ -325,6 +341,7 @@ export class Room {
 
   private deal(seed: number, lead: GameEvent[]): GameEvent[] {
     this.game = createGame({ seed, rules: this.rules })
+    this.record = { seed, rules: this.rules, steps: [] }
     this.counter += 1
     this.completedTrick = false
     return [
@@ -336,6 +353,7 @@ export class Room {
   private dealNextHand(): GameEvent[] {
     if (this.game === null) return []
     this.game = nextHand(this.game)
+    this.record?.steps.push({ kind: 'nextHand' })
     this.counter += 1
     this.completedTrick = false
     return [{ type: 'handStarted', number: this.game.handNumber, dealer: this.game.hand.dealer }]
@@ -362,6 +380,7 @@ export class Room {
       }
     }
     this.game = result.value
+    this.record?.steps.push({ kind: 'move', seat, move })
     this.counter += 1
     this.completedTrick =
       result.value.hand.phase !== 'done' &&
@@ -450,6 +469,29 @@ export class Room {
       seat,
       supersededSocketId: previous !== null && previous !== socketId ? previous : null,
     })
+  }
+
+  /**
+   * A mid-game join from a browser without the session token: the name alone gives back
+   * an absent player's seat. Trusts the table code and the name, which suits friends only.
+   */
+  private reclaimByName(
+    name: string,
+    socketId: string,
+  ): Result<{ seat: number; sessionToken: string; reclaimed: true }, ErrorCode> {
+    const wanted = name.trim().toLocaleLowerCase()
+    const same = (n: string) => n.trim().toLocaleLowerCase() === wanted
+    let token: string | null = null
+    for (const s of this.slots) {
+      if (s.kind === 'human' && s.status === 'disconnected' && same(s.name)) token = s.sessionToken
+      else if (s.kind === 'bot' && s.standIn !== null && same(s.standIn.name))
+        token = s.standIn.sessionToken
+      if (token !== null) break
+    }
+    if (token === null) return err('game_already_started')
+    const rejoined = this.rejoin(token, socketId)
+    if (!rejoined.okay) return rejoined
+    return ok({ seat: rejoined.value.seat, sessionToken: token, reclaimed: true })
   }
 
   /** Called by RoomManager when the reclaim window elapses on a disconnected human. */

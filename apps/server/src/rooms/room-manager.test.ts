@@ -1,4 +1,4 @@
-import { DEFAULT_TABLE_RULES } from '@belote/engine'
+import { DEFAULT_TABLE_RULES, replay } from '@belote/engine'
 import {
   BETWEEN_HANDS_SECONDS,
   BOT_DELAY_MS,
@@ -301,6 +301,24 @@ describe('turn clock', () => {
   })
 })
 
+describe('game record', () => {
+  it('records every move and deal, and replays to the state the table reached', () => {
+    const { manager } = managerWith()
+    const { room } = startedTable(manager)
+    room.leave('socket-0')
+    for (let i = 0; i < 20000 && !room.gameFinished; i++) {
+      if (room.botStep().length === 0) room.dealNextHandAutomatically()
+    }
+    expect(room.gameFinished).toBe(true)
+
+    const record = room.gameRecord
+    expect(record?.steps).toContainEqual({ kind: 'nextHand' })
+    const replayed = record === null ? null : replay(record)
+    expect(replayed?.okay && replayed.value.scores).toEqual(room.viewFor(1)?.scores)
+    expect(replayed?.okay && replayed.value.phase).toBe('finished')
+  })
+})
+
 describe('leave, disconnect, takeover and reclaim', () => {
   it('turns a seat into a stand-in bot on leave mid-game, and the token reclaims it', () => {
     const { manager } = managerWith()
@@ -328,6 +346,41 @@ describe('leave, disconnect, takeover and reclaim', () => {
     expect(room.rejoin('11111111-2222-4333-8444-555555555555', 's')).toEqual({
       okay: false,
       error: 'invalid_session',
+    })
+  })
+
+  it('hands a stand-in seat back to a mid-game join under the same name, with its token', () => {
+    const { manager } = managerWith()
+    const { room, token } = startedTable(manager)
+    room.leave('socket-0')
+
+    const back = room.join(' ana ', 'socket-other-browser')
+    expect(back).toEqual({ okay: true, value: { seat: 0, sessionToken: token, reclaimed: true } })
+    expect(room.seatInfos()[0]).toMatchObject({ kind: 'human', name: 'Ana', status: 'active' })
+  })
+
+  it('hands a disconnected seat back to a mid-game join under the same name', () => {
+    const { manager } = managerWith()
+    const { room, token } = startedTable(manager)
+    room.disconnect('socket-0')
+
+    expect(room.join('Ana', 'socket-other-browser')).toEqual({
+      okay: true,
+      value: { seat: 0, sessionToken: token, reclaimed: true },
+    })
+  })
+
+  it('still refuses a mid-game join that matches no absent player', () => {
+    const { manager } = managerWith()
+    const { room } = startedTable(manager)
+    expect(room.join('Ana', 'socket-intruder')).toEqual({
+      okay: false,
+      error: 'game_already_started',
+    })
+    room.leave('socket-0')
+    expect(room.join('Eve', 'socket-intruder')).toEqual({
+      okay: false,
+      error: 'game_already_started',
     })
   })
 
