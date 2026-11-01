@@ -32,6 +32,12 @@ export default defineConfig({
         locale: 'fr-FR',
         ...(channel === '' ? {} : { channel }),
       },
+      testIgnore: /iphone\.spec/,
+    },
+    {
+      name: 'iphone',
+      testMatch: /iphone\.spec/,
+      use: { browserName: 'webkit' },
     },
   ],
   /* The real server serving the real client build. A dev server would exercise a
