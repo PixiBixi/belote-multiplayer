@@ -67,13 +67,14 @@ second process would hold half the rooms and never know about the other.
 - Judge layout by measuring geometry or computed styles in a real browser, not by
   reading a screenshot, and sample after transitions settle.
 - A stale `dist/` means a new client talking to an old server.
-- `card.kind === 'wild' || card.kind === 'wild4'` written inline does not narrow the
-  union. Use `isWild`.
-- **`table-body` is a three-column grid.** A fourth child does not join the rail, it
-  wraps onto a new row under the table. Panels that share a column go in a wrapper.
-- **A user-facing string added to a component needs three edits**, and the compiler
-  only catches two: `messages.ts` for the type, then `en.ts` and `fr.ts`.
-  `no-english.test.ts` is what catches a literal left in the component itself.
+- **The server lists `STATIC_ROOT` once, at startup** (`wildcard: false`). After a
+  rebuild the new hashed assets fall through to `index.html`, served as `text/html`,
+  and the page is blank. Restart the server after every `npm run build`.
+- Teams are `seat % 2` and play turns counter-clockwise: the next seat sits on the
+  right. `lib/seats.ts` owns that mapping; do not recompute it in a component.
+- **A user-facing string goes in `fr.ts` first**: it is the reference catalogue and
+  defines the type, so the compiler then demands it in `en.ts`. `no-english.test.ts`
+  is what catches a literal left in the component itself.
 - **coturn starts as an unauthenticated open relay when it cannot read its config.**
   It logs a warning and carries on, and the image runs as `nobody` (uid 65534), so a
   root-owned `600` config publishes a relay to the internet. Empty `docker logs` is
