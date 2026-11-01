@@ -1572,13 +1572,15 @@ button:focus-visible {
 
 .bid-tiles {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   justify-content: center;
 }
 
 .bid-tile {
-  flex: 0 1 76px;
-  min-width: 0;
+  /* Fixed width, never shrunk: the panel sizes to its content, so a shrinkable tile
+     collapsed until CARREAU overflowed it. Many tiles wrap instead. */
+  flex: 0 0 76px;
   height: 96px;
   display: grid;
   grid-template-rows: 1fr auto;
@@ -1623,10 +1625,13 @@ button:focus-visible {
 }
 
 .bid-tile-label {
+  max-width: 100%;
   font-size: 0.66rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
+  /* Letter spacing trails the last letter: pad the start so the word stays centred. */
+  padding-left: 0.04em;
   line-height: 1.15;
   text-align: center;
 }
