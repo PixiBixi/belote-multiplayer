@@ -67,9 +67,8 @@ export function Lobby({
               info={seat(n)}
               mine={n === mySeat}
               host={n === lobby.hostSeat}
-              position={
-                (['bottom', 'right', 'top', 'left'] as const)[(n - mySeat + 4) % 4] ?? 'bottom'
-              }
+              // Fixed positions, not relative to me: a seat change must visibly move my card.
+              position={(['bottom', 'right', 'top', 'left'] as const)[n] ?? 'bottom'}
               editable={editable}
               canMove={lobby.configurable}
               onSetSeat={onSetSeat}

@@ -621,6 +621,8 @@ button:focus-visible {
 .mini-felt {
   position: relative;
   width: min(100%, 520px);
+  /* The top and bottom seats are centred on the rim and stick out by half their height. */
+  margin: 44px 0;
   aspect-ratio: 1.35;
   border-radius: 48%;
   background:
@@ -632,12 +634,15 @@ button:focus-visible {
     0 14px 40px rgba(0, 0, 0, 0.35);
 }
 
+/* flex, not grid: as grid items the dots and text nodes would stack down the felt. */
 .mini-felt-centre {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   font-size: 0.8rem;
   color: var(--text-dim);
 }
@@ -703,18 +708,55 @@ button:focus-visible {
   top: 50%;
 }
 
+/* Phones: absolute seats on an oval collide, so the felt becomes a diamond-shaped grid. */
 @media (max-width: 520px) {
+  .mini-felt {
+    aspect-ratio: auto;
+    border-radius: 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      'top top'
+      'left right'
+      'centre centre'
+      'bottom bottom';
+    gap: 10px;
+    margin: 0;
+    padding: 16px 14px;
+  }
+
   .lobby-seat {
-    width: 112px;
-    font-size: 0.75rem;
+    position: static;
+    translate: none;
+    width: auto;
+    min-width: 0;
+  }
+
+  .lobby-seat.at-top {
+    grid-area: top;
   }
 
   .lobby-seat.at-left {
-    left: 18%;
+    grid-area: left;
   }
 
   .lobby-seat.at-right {
-    left: 82%;
+    grid-area: right;
+  }
+
+  .lobby-seat.at-bottom {
+    grid-area: bottom;
+  }
+
+  .lobby-seat.at-top,
+  .lobby-seat.at-bottom {
+    justify-self: center;
+    width: min(100%, 200px);
+  }
+
+  .mini-felt-centre {
+    position: static;
+    grid-area: centre;
   }
 }
 
