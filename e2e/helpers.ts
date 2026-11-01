@@ -60,7 +60,7 @@ export async function playHand(page: Page, variant: 'classic' | 'coinche'): Prom
       await tryClick(page.locator('.bid-panel .chip-trump'))
       if (await tryClick(page.locator('.bid-panel .btn-primary:not([disabled])'))) continue
     }
-    if (await tryClick(page.locator('.bid-panel .btn-ghost'))) continue
+    if (await tryClick(page.locator('.bid-panel .bid-pass, .bid-panel .btn-ghost'))) continue
     await tryClick(page.locator('.declare-btn'))
     if (await tryClick(page.locator('.hand-fan .is-playable'))) continue
     await page.waitForTimeout(150)
