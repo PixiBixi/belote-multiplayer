@@ -332,6 +332,7 @@ button:focus-visible {
 
 .pcard-index {
   position: absolute;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -395,7 +396,8 @@ button:focus-visible {
 
 /* Court cards: an engraved frame, a double-headed letter, the suit at the heart. */
 .pcard-face.court {
-  inset: 13% 15%;
+  /* Narrower than the pips face: the frame must clear both corner indexes. */
+  inset: 6% 23%;
 }
 
 .court-frame {
