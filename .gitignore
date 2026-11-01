@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+dist-types/
+playwright-report/
+test-results/
+.playwright/
+
+# Throwaway artefacts from driving a real browser to check a layout or an
+# animation. 769 KB of them reached a commit before this rule existed.
+zz-*

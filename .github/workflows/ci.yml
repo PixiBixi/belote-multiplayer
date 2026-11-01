@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: this workflow only ever reads the repository.
+permissions:
+  contents: read
+
+# A new push to the same ref supersedes the previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, format and types
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm run build
+
+      # The image once shipped Node 22 while every other job validated the version in .nvmrc:
+      # supported, but not the runtime anything was tested on, and nothing failed to say
+      # so. This is the only place the two can be compared, so it is asserted here.
+      - name: The image runs the Node version CI validates
+        run: |
+          PINNED=$(tr -d '[:space:]' < .nvmrc)
+          STAGES=$(grep -c '^FROM node:' Dockerfile)
+          MATCHING=$(grep -c "^FROM node:${PINNED}-alpine" Dockerfile)
+          if [ "$STAGES" -ne "$MATCHING" ]; then
+            echo "::error::.nvmrc pins Node ${PINNED}, the Dockerfile disagrees:"
+            grep -n '^FROM node:' Dockerfile
+            exit 1
+          fi
+          echo "All ${STAGES} Dockerfile stages track Node ${PINNED}."
+
+  test:
+    name: Test on Node ${{ matrix.node }}
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor declared in engines, the Active LTS, and the release .nvmrc pins.
+        node: ['22', '24', '26']
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run test
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:coverage
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  e2e:
+    name: End to end
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-26.04
+    needs: [quality, test, e2e]
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -t belote-multiplayer:ci .
+      # Building proves nothing on its own: boot it and probe what it serves.
+      - name: Boot the image and probe it
+        run: |
+          docker run --rm -d --name belote-ci -p 5099:5050 belote-multiplayer:ci
+          for _ in $(seq 1 40); do
+            curl -sf http://127.0.0.1:5099/healthz >/dev/null && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:5099/healthz
+          curl -sf http://127.0.0.1:5099/ | grep -q 'id="root"'
+          curl -sf 'http://127.0.0.1:5099/socket.io/?EIO=4&transport=polling' >/dev/null
+          test "$(docker exec belote-ci id -u)" != "0"
+          docker stop belote-ci

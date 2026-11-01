@@ -1,0 +1,188 @@
+import type { Card, CardId } from '@belote/engine'
+import { describe, expect, it } from 'vitest'
+import { describeEvent } from './describe-event.js'
+import { en } from '../i18n/en.js'
+
+const nameOf = (seat: number) => ['Ana', 'Ben', 'Cleo'][seat] ?? `Seat ${seat}`
+/* Seat 0 is 'Ana' here, so nobody is the viewer unless a test says so. */
+const NOT_ME = 9
+const draw2: Card = { id: 'c' as CardId, kind: 'draw2', color: 'B' }
+
+describe('describeEvent', () => {
+  it('names the player who played a card', () => {
+    expect(describeEvent({ type: 'cardPlayed', seat: 1, card: draw2 }, nameOf, NOT_ME, en)).toBe(
+      'Ben played a Blue draw two',
+    )
+  })
+
+  it('names every card kind', () => {
+    const named = (card: Card) =>
+      describeEvent({ type: 'cardPlayed', seat: 0, card }, nameOf, NOT_ME, en)
+    expect(named({ id: 'a' as CardId, kind: 'number', color: 'R', value: 7 })).toContain('Red 7')
+    expect(named({ id: 'b' as CardId, kind: 'skip', color: 'G' })).toContain('Green skip')
+    expect(named({ id: 'c' as CardId, kind: 'reverse', color: 'Y' })).toContain('Yellow reverse')
+    expect(named({ id: 'd' as CardId, kind: 'wild' })).toContain('Wild')
+    expect(named({ id: 'e' as CardId, kind: 'wild4' })).toContain('Wild draw four')
+  })
+
+  it('uses singular and plural correctly for drawn cards', () => {
+    expect(describeEvent({ type: 'cardsDrawn', seat: 0, count: 1 }, nameOf, NOT_ME, en)).toBe(
+      'Ana drew a card',
+    )
+    expect(describeEvent({ type: 'cardsDrawn', seat: 0, count: 4 }, nameOf, NOT_ME, en)).toBe(
+      'Ana drew 4 cards',
+    )
+  })
+
+  it('describes the uno call and its penalty', () => {
+    expect(describeEvent({ type: 'unoCalled', seat: 2 }, nameOf, NOT_ME, en)).toBe(
+      'Cleo called UNO',
+    )
+    expect(describeEvent({ type: 'unoPenalty', seat: 2, count: 2 }, nameOf, NOT_ME, en)).toBe(
+      'Cleo forgot to call UNO and drew 2 cards',
+    )
+  })
+
+  it('describes a call-out from either side of it', () => {
+    const asYou = (seat: number) => (seat === 0 ? 'You' : nameOf(seat))
+    expect(describeEvent({ type: 'calledOut', by: 1, target: 2 }, nameOf, NOT_ME, en)).toBe(
+      'Ben caught Cleo without UNO',
+    )
+    expect(describeEvent({ type: 'calledOut', by: 0, target: 2 }, asYou, 0, en)).toBe(
+      'You caught Cleo without UNO',
+    )
+    expect(describeEvent({ type: 'calledOut', by: 1, target: 0 }, asYou, 0, en)).toBe(
+      'Ben caught you without UNO',
+    )
+  })
+
+  it('describes a swap from either side of it', () => {
+    const asYou = (seat: number) => (seat === 0 ? 'You' : nameOf(seat))
+    expect(describeEvent({ type: 'handsSwapped', seat: 1, with: 2 }, nameOf, NOT_ME, en)).toBe(
+      'Ben played a 7 and took Cleo’s hand',
+    )
+    expect(describeEvent({ type: 'handsSwapped', seat: 0, with: 2 }, asYou, 0, en)).toBe(
+      'You played a 7 and took Cleo’s hand',
+    )
+    expect(describeEvent({ type: 'handsSwapped', seat: 1, with: 0 }, asYou, 0, en)).toBe(
+      'Ben played a 7 and took your hand',
+    )
+  })
+
+  it('says who jumped in, from either side of it', () => {
+    const asYou = (seat: number) => (seat === 0 ? 'You' : nameOf(seat))
+    expect(describeEvent({ type: 'jumpedIn', seat: 1 }, nameOf, NOT_ME, en)).toBe(
+      'Ben jumped in, out of turn',
+    )
+    expect(describeEvent({ type: 'jumpedIn', seat: 0 }, asYou, 0, en)).toBe(
+      'You jumped in, out of turn',
+    )
+  })
+
+  it('says a turn ended on a card that was kept, from either side of it', () => {
+    /* The line has to name the card as well as the ending: "Ben drew a card" no longer
+       means his turn is over, so a log that only said it ended would leave a reader
+       wondering what became of the card. */
+    const asYou = (seat: number) => (seat === 0 ? 'You' : nameOf(seat))
+    expect(describeEvent({ type: 'turnPassed', seat: 1 }, nameOf, NOT_ME, en)).toBe(
+      'Ben kept the card drawn and ended their turn',
+    )
+    expect(describeEvent({ type: 'turnPassed', seat: 0 }, asYou, 0, en)).toBe(
+      'You kept the card you drew and ended your turn',
+    )
+  })
+
+  it('names the direction a rotation sent the hands', () => {
+    // A reverse earlier in the round changes it, so the log has to say which way.
+    expect(describeEvent({ type: 'handsRotated', direction: 1 }, nameOf, NOT_ME, en)).toContain(
+      'clockwise',
+    )
+    expect(describeEvent({ type: 'handsRotated', direction: -1 }, nameOf, NOT_ME, en)).toContain(
+      'anticlockwise',
+    )
+  })
+
+  it('describes presence changes', () => {
+    expect(describeEvent({ type: 'seatDisconnected', seat: 1 }, nameOf, NOT_ME, en)).toBe(
+      'Ben lost connection',
+    )
+    expect(describeEvent({ type: 'seatReconnected', seat: 1 }, nameOf, NOT_ME, en)).toBe(
+      'Ben is back',
+    )
+    expect(describeEvent({ type: 'seatLeft', seat: 1 }, nameOf, NOT_ME, en)).toBe(
+      'Ben left the game',
+    )
+  })
+
+  it('distinguishes a win from an abandoned round', () => {
+    expect(
+      describeEvent(
+        { type: 'roundEnded', winner: 0, awarded: [77, 0], scores: [77, 0] },
+        nameOf,
+        NOT_ME,
+        en,
+      ),
+    ).toBe('Ana wins the round, +77 points')
+    expect(
+      describeEvent(
+        { type: 'roundEnded', winner: null, awarded: [0, 0], scores: [0, 0] },
+        nameOf,
+        NOT_ME,
+        en,
+      ),
+    ).toBe('Round abandoned - not enough players')
+  })
+
+  it('conjugates the second person when the viewer won', () => {
+    const asYou = (seat: number) => (seat === 0 ? 'You' : nameOf(seat))
+    expect(
+      describeEvent(
+        { type: 'roundEnded', winner: 0, awarded: [12, 0], scores: [12, 0] },
+        asYou,
+        0,
+        en,
+      ),
+    ).toBe('You win the round, +12 points')
+  })
+
+  it('conjugates the second person when the viewer reconnects', () => {
+    const asYou = (seat: number) => (seat === 0 ? 'You' : nameOf(seat))
+    expect(describeEvent({ type: 'seatReconnected', seat: 0 }, asYou, 0, en)).toBe('You are back')
+  })
+
+  it('leaves every other line untouched, since they are all past tense', () => {
+    const asYou = (seat: number) => (seat === 0 ? 'You' : nameOf(seat))
+    expect(describeEvent({ type: 'cardsDrawn', seat: 0, count: 1 }, asYou, 0, en)).toBe(
+      'You drew a card',
+    )
+    expect(describeEvent({ type: 'unoCalled', seat: 0 }, asYou, 0, en)).toBe('You called UNO')
+    expect(describeEvent({ type: 'seatDisconnected', seat: 0 }, asYou, 0, en)).toBe(
+      'You lost connection',
+    )
+    expect(describeEvent({ type: 'seatLeft', seat: 0 }, asYou, 0, en)).toBe('You left the game')
+  })
+
+  it('pluralises drawn cards and penalties correctly', () => {
+    expect(describeEvent({ type: 'unoPenalty', seat: 0, count: 1 }, nameOf, NOT_ME, en)).toContain(
+      '1 card',
+    )
+    expect(
+      describeEvent({ type: 'unoPenalty', seat: 0, count: 1 }, nameOf, NOT_ME, en),
+    ).not.toContain('1 cards')
+    expect(describeEvent({ type: 'unoPenalty', seat: 0, count: 2 }, nameOf, NOT_ME, en)).toContain(
+      '2 cards',
+    )
+  })
+
+  it('describes a restart', () => {
+    expect(describeEvent({ type: 'gameRestarted' }, nameOf, NOT_ME, en)).toBe(
+      'A new match was dealt',
+    )
+  })
+
+  it('falls back to a seat number for an unknown seat', () => {
+    expect(describeEvent({ type: 'unoCalled', seat: 9 }, nameOf, NOT_ME, en)).toBe(
+      'Seat 9 called UNO',
+    )
+  })
+})

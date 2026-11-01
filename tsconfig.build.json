@@ -1,0 +1,10 @@
+{
+  // Build solution: emits production code only, tests excluded.
+  "files": [],
+  "references": [
+    { "path": "packages/engine/tsconfig.build.json" },
+    { "path": "packages/protocol/tsconfig.build.json" },
+    { "path": "apps/server/tsconfig.build.json" },
+    { "path": "apps/web/tsconfig.build.json" }
+  ]
+}

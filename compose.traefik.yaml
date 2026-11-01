@@ -1,0 +1,78 @@
+# Deployment behind an existing Traefik. Replace the three placeholders and run:
+#
+#   docker compose -f compose.traefik.yaml pull
+#   docker compose -f compose.traefik.yaml up -d
+#
+# Add --build to the second line instead of pulling when you are changing code
+# locally and want your own build rather than the published one.
+#
+# Verified end to end: the full Playwright suite plays complete games through
+# Traefik with exactly these labels and no WebSocket configuration of any kind.
+services:
+  belote:
+    # Both on purpose. `docker compose pull` fetches the image CI published, which
+    # is the one it booted and probed; `up --build` still builds locally when you
+    # are changing something. Pin the tag to a commit SHA to roll back.
+    image: ghcr.io/pixibixi/belote-multiplayer:latest
+    build: .
+    environment:
+      # Traefik terminates TLS, so players reach this over HTTPS even though the
+      # container itself speaks plain HTTP. Without this the app drops HSTS.
+      BEHIND_TLS: 'true'
+      # Same origin serves the client, so no allowlist is needed.
+      CORS_ORIGIN: ''
+      GRACE_PERIOD_MS: '60000'
+      MAX_ROOMS: '500'
+      LOG_LEVEL: 'info'
+      # Voice chat. TURN_SECRET must equal coturn's static-auth-secret; it is the
+      # only coupling between the two, and it is not a network one. Empty leaves
+      # voice on STUN alone, which still works for most players.
+      TURN_URL: '${TURN_URL:-}'
+      TURN_SECRET: '${TURN_SECRET:-}'
+      STUN_URL: '${STUN_URL:-}'
+    # No `ports:` on purpose. Traefik reaches the container over the shared
+    # network; publishing 5050 on the host would expose a plain-HTTP way in that
+    # bypasses TLS entirely.
+    networks: [traefik]
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.belote.rule=Host(`REPLACE.example.com`)
+      - traefik.http.routers.belote.entrypoints=websecure
+      - traefik.http.routers.belote.tls.certresolver=REPLACE_RESOLVER
+      - traefik.http.services.belote.loadbalancer.server.port=5050
+    restart: unless-stopped
+    # State lives in memory: never scale this past one replica. Traefik makes
+    # scaling a one-line change, and it would break the game rather than spread
+    # it - two replicas would each hold half the rooms, and neither would know
+    # about the other.
+    deploy:
+      replicas: 1
+
+  # Optional. Only players behind a symmetric NAT (mobile data, CGNAT, some
+  # corporate wifi) need a relay; everyone else pairs on STUN alone. Delete this
+  # service and leave TURN_URL empty if you would rather not run it.
+  #
+  # Host networking is deliberate: a relay needs a wide UDP range, and publishing
+  # it through docker-proxy costs a process per port and hides the real source IP
+  # from coturn's own quota accounting.
+  #
+  # The config must be READABLE BY UID 65534. The image runs as `nobody`, and
+  # coturn logs a warning and falls back to an UNAUTHENTICATED OPEN RELAY when it
+  # cannot read its config, so a root-owned 600 file quietly publishes a relay to
+  # the internet. After any change, check that `ss -lunp | grep turnserver` shows
+  # the public IP alone and that an unauthenticated ALLOCATE is refused with 401.
+  coturn:
+    image: coturn/coturn:4.18@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3
+    container_name: coturn
+    network_mode: host
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ['-c', '/etc/coturn/turnserver.conf']
+    restart: unless-stopped
+
+networks:
+  traefik:
+    # The network your Traefik already watches. `external: true` means compose
+    # joins it rather than creating a second one Traefik cannot see.
+    name: REPLACE_TRAEFIK_NETWORK
+    external: true

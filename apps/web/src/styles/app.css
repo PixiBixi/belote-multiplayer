@@ -1,0 +1,3011 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: var(--step-0);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 400;
+  margin: 0;
+  line-height: 0.92;
+  letter-spacing: var(--track-tight);
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+
+/* Content never sits flush against the viewport edge. */
+#root {
+  min-height: 100dvh;
+  padding: clamp(0.75rem, 3vw, 1.5rem);
+}
+
+/* The table fills the window edge to edge. The masthead rule, the rails' own rules and
+   the band along the bottom already say where every region begins, so an outer margin
+   only shrinks the felt - and the felt is the thing being played on. */
+#root:has(.table-screen) {
+  padding: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Shared controls ---------- */
+
+.btn {
+  appearance: none;
+  font: inherit;
+  font-family: var(--body);
+  font-weight: 600;
+  /* 48px rather than 44: the controls row is the one band of the page that is all
+     buttons, and at 44 against this type scale it read as a caption strip. Still
+     above the tap-target floor by 4px. */
+  min-height: 48px;
+  padding: 0 1.4rem;
+  border: 2px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--text);
+  color: var(--ground);
+}
+
+/* Border and text both, not opacity: at 45% on paper the outline all but vanished
+   and a disabled control became an empty rectangle. */
+.btn:disabled {
+  border-color: var(--panel-edge);
+  color: var(--text-dim);
+  background: transparent;
+  cursor: not-allowed;
+}
+
+/* Ink, not green. The four pigments carry the rules of the game; the primary action
+   has to be said in the one colour that means nothing else on the page. */
+.btn-primary {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--ground);
+  font-family: var(--display);
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--ground);
+  color: var(--text);
+}
+
+.btn-uno {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--bone);
+  font-family: var(--display);
+  font-weight: 400;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.btn-uno:hover:not(:disabled) {
+  background: var(--ground);
+  color: var(--red);
+}
+
+/* The shortcut, worn by the control it fires. currentColor throughout, so it follows
+   the button through its hover rather than needing a second rule per variant. */
+.btn-key {
+  margin-left: 0.6rem;
+  padding: 0.05em 0.4em;
+  border: 1px solid currentColor;
+  border-radius: var(--r-sm);
+  font-family: var(--body);
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0;
+  opacity: 0.75;
+}
+
+/* A shortcut is unreachable from a touchscreen, and the label already says UNO. */
+@media (hover: none) {
+  .btn-key {
+    display: none;
+  }
+}
+
+/* One field style, shared, and living in the shared section on purpose: it was written
+   inside the Home block once and a later rewrite of that block took it with it, which
+   left every input on the page rendering as the platform's native control - a grey box
+   in dark mode, belonging to no design at all. */
+.field,
+input[type='text'],
+input[type='number'],
+.home-form input,
+.goal-row input,
+.chat-foot input {
+  font: inherit;
+  min-height: 48px;
+  padding: 0 0.9rem;
+  border: 2px solid var(--text);
+  background: transparent;
+  color: var(--text);
+}
+
+.field::placeholder,
+input::placeholder {
+  color: var(--text-dim);
+}
+
+.icon-btn {
+  appearance: none;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+}
+
+.icon-btn:hover {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.eyebrow {
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+
+.banner {
+  margin: 0;
+  padding: 0.8rem 1rem;
+  font-size: var(--step--1);
+  border-left: 4px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.banner-bad {
+  border-left-color: var(--red);
+}
+
+.banner-warn {
+  border-left-color: var(--yellow);
+}
+
+/* What is unusual about this table, above the play. A strip rather than a panel: it is
+   reference, not a control, and it renders only when there is something to say - so it
+   costs a phone screen nothing on an ordinary table. */
+.rules-in-play {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+}
+
+.rules-in-play-heading {
+  font-size: var(--step--1);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Not the interactive `.chip`: no 44px target here, because nothing in this strip is
+   tappable and a reference chip sized like a button invites a press that does nothing. */
+.chip-rule {
+  min-height: 0;
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--panel-edge);
+  background: transparent;
+  font-size: var(--step--1);
+  color: var(--text);
+}
+
+/* An active rule reads first, an inactive one recedes without disappearing. The tick and
+   cross carry the state on their own - this is emphasis, never the message, since a dimmed
+   chip means nothing to a screen reader and little to anyone in bright sun. */
+.chip-rule-on {
+  border-color: rgb(30 158 74 / 0.55);
+}
+
+.chip-rule-off {
+  color: var(--text-dim);
+}
+
+/* A seat a call-out is available against. On the plate and not only on the button, because
+   the button alone read as decoration - whole games were played without anybody noticing
+   it. No animation on purpose: an overlay here once stuck at `opacity: 1` for ever because
+   its animation had no fill mode, and a mark outliving the window it describes points at
+   somebody who is no longer exposed. */
+.plate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  border: 2px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Filled, and in ink rather than a fifth colour: on a page where the four pigments mean
+   the four suits, whose turn it is has to be said in the one colour that means nothing
+   else. */
+.plate-turn {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--ground);
+}
+
+/* A block of the seat's own colour, not a dot: the same mark the rail and the roster put
+   beside a name, at the size a 12px band allows. */
+.plate-pigment {
+  flex: none;
+  width: 10px;
+  height: 1.1em;
+}
+
+.plate-count {
+  font-family: var(--display);
+  font-size: var(--step-0);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: normal;
+}
+
+.plate-note {
+  font-size: 0.68rem;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.plate-exposed {
+  border-color: var(--yellow);
+}
+
+.presence {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.presence-active {
+  background: var(--green);
+}
+
+.presence-disconnected {
+  background: var(--yellow);
+}
+
+.presence-left {
+  background: var(--red);
+}
+
+.code-display {
+  margin: 0;
+  font-family: var(--data);
+  font-size: var(--step-3);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: 0.06em;
+}
+
+.copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+/* A column, so a failure message lands under the button it belongs to instead of
+   shoving its neighbour sideways. */
+.copy-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.btn-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  /* Narrower than a primary action, but still 44px tall via .btn - these sit
+     close to other controls on a phone. */
+  padding: 0.5rem 0.95rem;
+  font-size: var(--step--1);
+  /* Restated to add colour, so the copied tint fades rather than snapping. */
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.btn-copy.is-copied {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Deliberately not red: at this size a red that reads on the light ground drops
+   to 3.6:1 on the dark one, and the sentence carries the meaning without help
+   from colour anyway. */
+.copy-failed {
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ---------- Cards ---------- */
+
+/*
+ * Playable is lifted off the row and casts a shadow; unplayable lies flat. Elevation,
+ * because the state a card is in must not be told in the one channel the card itself
+ * needs.
+ *
+ * This was `opacity: 0.34` on the whole button, and a fade cannot be made legible: the
+ * pigment and the numeral wash out together, so the cream numeral on a red card measured
+ * 1.67:1 against its own pigment where a playable one measures 4.42:1. Every pigment sat
+ * between 1.53 and 1.85. Raising the opacity does not fix it either - 0.71 is what the
+ * worst pigment needs to reach 3:1, and 4.5:1 is unreachable at any opacity below 1. See
+ * `lib/contrast.ts`, which is where those numbers come from.
+ *
+ * A card therefore keeps its full pigment in every state. The pigment IS the card.
+ *
+ * The rest lift also falls out correctly when it is nobody's turn but yours to wait:
+ * every card is unplayable, so the whole row lies flat and nothing is faded.
+ */
+.card-button {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  display: block;
+  width: 100%;
+  border-radius: var(--r-card);
+  cursor: pointer;
+  transform: translateY(-10px);
+  filter: drop-shadow(6px 6px 0 color-mix(in srgb, var(--text) 22%, transparent));
+  transition:
+    transform 180ms ease,
+    filter 180ms ease;
+}
+
+/*
+ * Flat, shadowless and slightly faded. Three channels rather than one, because the fade
+ * alone cannot carry it: see the ratios above.
+ *
+ * 0.71 is the floor, not a taste: it puts the worst pigment at exactly 3.01:1 on the
+ * light ground and 3.28:1 on the dark one, against the 3:1 minimum for large text. 0.65
+ * drops red to 2.74:1 and green to 2.76:1. Do NOT lower this - it was 0.34, which put red
+ * at 1.67:1, and no opacity below 1 reaches 4.5:1 at all. More separation than this has to
+ * come from a channel other than opacity.
+ *
+ * One value for both themes, where there used to be two. At this depth the ground barely
+ * matters, and a single rule cannot drift apart from its twin.
+ */
+.card-button:disabled {
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+  opacity: 0.71;
+}
+
+.card-button:hover:not(:disabled),
+.card-button:focus-visible:not(:disabled) {
+  transform: translateY(-18px);
+  filter: drop-shadow(10px 10px 0 color-mix(in srgb, var(--text) 26%, transparent));
+}
+
+/* ---------- Home ---------- */
+
+/* A poster on the left, the preferences on the right, one rule between them. The
+   wordmark is the page: it is set as large as the column allows and the forms sit
+   under it, so the screen reads as a cover first and a form second. */
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 30rem;
+  margin: 0 auto;
+  padding: clamp(0.5rem, 2vh, 3rem) 0;
+}
+
+@media (min-width: 900px) {
+  .home {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    align-items: stretch;
+    column-gap: clamp(2rem, 5vw, 4rem);
+    max-width: 72rem;
+  }
+
+  .home-column {
+    border-right: 3px solid var(--text);
+    padding-right: clamp(1.5rem, 3vw, 3rem);
+  }
+}
+
+.home-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.pigment-strip {
+  display: flex;
+  height: 14px;
+}
+
+.pigment-strip > span {
+  flex: 1 1 0;
+}
+
+/* Sized off the column, not off a step on the type scale: the whole point of the
+   wordmark is that it fills the width it is given. */
+.home-title {
+  font-size: clamp(4.5rem, 15vw, 15.5rem);
+  line-height: 0.78;
+  letter-spacing: -0.055em;
+}
+
+.home-lede {
+  margin: 0;
+  max-width: 32ch;
+  font-size: clamp(0.9375rem, 1.4vw, 1.25rem);
+  font-weight: 500;
+  line-height: 1.35;
+  text-wrap: pretty;
+}
+
+/* Pushed to the foot of the column on a tall screen, so the wordmark keeps the space
+   above it rather than the two of them meeting in the middle. */
+.home-forms {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.home-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The field and its button on one line: they are one action, and stacked they read as
+   two. Wraps on a phone, where one line is not available. */
+.home-form-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.field-group {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.field-group > label,
+.home-form label {
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.code-input {
+  font-family: var(--data);
+  font-size: var(--step-1);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.home-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.home-divider::before,
+.home-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--panel-edge);
+}
+
+.home-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .home-column {
+    gap: 1.5rem;
+  }
+
+  .home-aside {
+    gap: 1.75rem;
+  }
+}
+
+.theme-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Two up on a desktop, each card at a size you can actually judge: a row of five 30px
+   cards was a row of five red rectangles, and the thing being chosen was too small to
+   choose by. On a phone the same grid at full width would run three screens on its own,
+   so there the cards pack instead - still large enough to tell apart, and the label under
+   each one carries the name either way. */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: 0.75rem;
+}
+
+@media (min-width: 900px) {
+  .theme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+  }
+}
+
+.theme-swatch {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+}
+
+.theme-swatch-card {
+  display: block;
+  width: 100%;
+}
+
+/* The ring that marks the chosen face, as two stacked shadows rather than an offset
+   outline: the inner one paints the gap in the page colour, the outer one is the rule.
+   An `outline` here read identically and counted toward scrollable overflow, so the
+   swatch in the last column pushed the phone layout 3px sideways. A box-shadow does not. */
+.theme-swatch-on .theme-swatch-card {
+  box-shadow:
+    0 0 0 4px var(--ground),
+    0 0 0 7px var(--text);
+}
+
+/* Stacked at phone width, side by side once there is room for both. "Letterpress" plus
+   "papier" on one line is wider than a 78px cell, and a flex row that cannot fit pushes
+   past its parent rather than wrapping - which is how the last column shoved the page
+   3px sideways. */
+.theme-swatch-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--panel-edge);
+  font-size: var(--step--1);
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 900px) {
+  .theme-swatch-foot {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+}
+
+.theme-swatch-name {
+  font-weight: 700;
+}
+
+.theme-swatch-note {
+  color: var(--text-dim);
+}
+
+.theme-swatch-on .theme-swatch-note {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.home-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--panel-edge);
+}
+
+.lang-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ---------- Lobby ---------- */
+
+/* The code and the seats on the left, what the table plays by on the right, one rule
+   between them - the same two-column poster the home screen is, because it is the same
+   moment: a page you read before anything happens. */
+.lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 30rem;
+  margin: 0 auto;
+  padding: clamp(0.5rem, 2vh, 3rem) 0;
+}
+
+@media (min-width: 900px) {
+  .lobby {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    align-items: stretch;
+    column-gap: clamp(2rem, 4vw, 4rem);
+    max-width: 96rem;
+    /* Fixed to the window rather than to its content. A grid row is as tall as its
+       tallest cell, so an unbounded settings column would push the control that ends the
+       waiting below the fold - which is exactly the defect the seats and Start were moved
+       out of the settings column to avoid in the first place. */
+    height: calc(100dvh - 2 * clamp(0.5rem, 2vh, 3rem));
+  }
+
+  .lobby-column {
+    border-right: 3px solid var(--text);
+    padding-right: clamp(1.5rem, 3vw, 3rem);
+    min-height: 0;
+  }
+
+  /* One scroller, not two: the whole settings column gives way, so the reference table
+     inside it does not need a cap of its own and the reader never meets a scrollbar
+     nested in a scrollbar. */
+  .lobby-aside {
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+  }
+
+  .lobby-values {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+.lobby-column,
+.lobby-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.code-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lobby-lede {
+  margin: 0;
+  max-width: 40ch;
+  font-size: var(--step-0);
+  line-height: 1.45;
+  color: var(--text-dim);
+  text-wrap: pretty;
+}
+
+.copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.copy-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.btn-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 1rem;
+  font-size: var(--step--1);
+}
+
+.btn-copy.is-copied {
+  background: var(--text);
+  color: var(--ground);
+}
+
+.copy-failed {
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+
+/* A list separated by rules, opened by a heavy one. Each seat is a row: pigment block,
+   name, seat number - the same anatomy as a row of the opponents rail on the table, so
+   the same fact is drawn the same way in both places. */
+.roster {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 3px solid var(--text);
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--panel-edge);
+  background: transparent;
+  font-size: var(--step-0);
+}
+
+.slot-away {
+  opacity: 0.55;
+}
+
+.slot-empty {
+  color: var(--text-dim);
+}
+
+.slot-who {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.slot-name {
+  font-family: var(--display);
+  font-size: var(--step-1);
+  letter-spacing: var(--track-tight);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.slot-empty .slot-name {
+  font-family: var(--body);
+  font-size: var(--step-0);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.slot-seat,
+.slot-status {
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+
+.slot-status {
+  margin-left: auto;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-family: var(--display);
+  font-size: var(--step-1);
+  color: var(--ink);
+}
+
+.avatar-empty {
+  background: none;
+  border: 2px solid var(--panel-edge);
+  color: var(--text-dim);
+}
+
+.host-tag {
+  margin-left: auto;
+  padding: 0.28rem 0.55rem;
+  background: var(--yellow);
+  color: var(--ink);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Pushed to the foot of the column, both on one line: the control that ends the waiting
+   and the one that leaves. It used to sit above a growing list of settings for fear of
+   being buried; the settings are in the other column now, so it can be where the eye
+   ends up. */
+.lobby-actions {
+  margin-top: auto;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.lobby-start {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.lobby-aside-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: 0.5rem;
+}
+
+.lobby-aside-head h2 {
+  font-size: var(--step-2);
+}
+
+/* ---------- Table rules and match settings ---------- */
+
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--panel-edge);
+}
+
+.rule {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--panel-edge);
+}
+
+.rule-name {
+  font-size: var(--step-0);
+  font-weight: 700;
+}
+
+.rule-why {
+  margin: 0;
+  padding-left: calc(44px + 0.75rem);
+  font-size: var(--step--1);
+  line-height: 1.45;
+  color: var(--text-dim);
+  text-wrap: pretty;
+}
+
+/* The read-only row: the label and its state, with a leader between them so the eye can
+   cross the gap. No switch at all, because a guest is being told rather than asked. */
+.rule-state {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-height: 32px;
+  margin: 0;
+  font-size: var(--step-0);
+}
+
+.rule-state::before {
+  content: '';
+  order: 1;
+  flex: 1;
+  border-bottom: 1px dotted color-mix(in oklab, var(--text-dim) 55%, transparent);
+  transform: translateY(-0.2em);
+}
+
+.rule-state strong {
+  order: 2;
+  font-weight: 700;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+/* A real switch, drawn rather than borrowed: a native checkbox is a rounded tick box in
+   every browser's own idiom, which is the one shape this direction has no vocabulary for.
+   Green when on, because the pigment already means "in play" on the felt. */
+input.switch {
+  appearance: none;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  padding: 3px;
+  border: 2px solid var(--panel-edge);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+input.switch::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background: var(--panel-edge);
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+input.switch:checked {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+input.switch:checked::before {
+  background: var(--bone);
+  transform: translateX(18px);
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 620px) {
+  .setting-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  background: transparent;
+}
+
+.seg {
+  appearance: none;
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--panel-edge);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.seg-on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--ground);
+  font-family: var(--display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.goal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.goal-row label {
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+
+.goal-row input {
+  width: 5.5rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  appearance: none;
+  min-height: 44px;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--panel-edge);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.chip:hover {
+  border-color: var(--text);
+}
+
+.chip-on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--ground);
+  font-family: var(--display);
+  font-weight: 400;
+}
+
+/* The clock is the one setting that changes how the game FEELS rather than what it
+   allows, so the chosen pace is the one chip that takes a pigment. */
+.chip-clock {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--bone);
+}
+
+/* Ink, with the yellow mark: it answers "why can I not change this", which is the first
+   question a guest asks, and a hint-coloured line at the foot of a column is the one
+   thing nobody reads. */
+.rule-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  padding: 1rem;
+  background: var(--text);
+  color: var(--ground);
+  font-size: var(--step--1);
+  line-height: 1.45;
+}
+
+.rule-note-mark {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: var(--yellow);
+  color: var(--ink);
+  font-family: var(--display);
+}
+
+/* Capped and scrollable at every width, not only on a phone. It was uncapped on a
+   desktop back when Start sat ABOVE the settings and nothing below could push it
+   anywhere; Start is at the foot of its column now, and a grid row is as tall as its
+   tallest cell - so an uncapped reference table in the other column put the control that
+   ends the waiting below the fold. It is the panel that is pure reference: it is the one
+   that should give way. */
+.lobby-values {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+/* ---------- Table ---------- */
+
+/* One sheet of paper, edge to edge, with everything inside it. The chat used to be a
+   sibling of the felt and the felt a 3x3 compass; both are gone. What replaced them is
+   a masthead, three columns and a band along the bottom - a page, not a table top. */
+.table-screen {
+  max-width: none;
+  margin: 0;
+}
+
+.table-surface {
+  position: relative;
+  background: var(--ground);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+@media (min-width: 1040px) {
+  .table-surface {
+    height: 100dvh;
+  }
+}
+
+.table-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.7rem clamp(0.75rem, 2vw, 1.5rem);
+  border-bottom: 3px solid var(--text);
+}
+
+.table-code {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.table-code-value {
+  font-family: var(--data);
+  font-size: var(--step-1);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.rail-foot {
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--panel-edge);
+}
+
+.table-bar-left,
+.table-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  font-family: var(--display);
+  font-size: var(--step-1);
+  letter-spacing: var(--track-tight);
+}
+
+/* Three columns on a desktop, one stack on a phone. `minmax(0, 1fr)` on the middle
+   column and nowhere else: the rails are the fixed pair, and the middle is what gives
+   way, which is the opposite of what a fixed centre would do to the cards. */
+.table-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 1040px) {
+  .table-body {
+    grid-template-columns: 16rem minmax(0, 1fr) 20rem;
+    /* Grid rows default to `auto`, which means "as tall as the tallest cell" - and the
+       log is the cell with no natural height. Hidden here and `min-height: 0` on the
+       cells is what hands the overflow to the panel instead of to the page. */
+    overflow: hidden;
+  }
+
+  .table-body > * {
+    min-height: 0;
+  }
+}
+
+.rail {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1rem clamp(0.75rem, 1.5vw, 1.25rem);
+}
+
+@media (min-width: 1040px) {
+  .rail-seats {
+    border-right: 1px solid var(--panel-edge);
+  }
+}
+
+.table-centre {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.colour-band {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.7rem clamp(0.9rem, 2vw, 1.75rem);
+  /* Cream on every pigment except yellow, where it measures 1.7:1 and the ink is the
+     only readable choice. The same decision the card faces make, for the same reason. */
+  color: var(--bone);
+}
+
+.colour-band[data-colour='Y'] {
+  color: var(--ink);
+}
+
+.colour-band-name,
+.colour-band-dir {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.colour-band-name {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: var(--step-0);
+}
+
+.centre-row {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: clamp(1rem, 3vw, 2.5rem);
+  padding: clamp(1rem, 3vh, 2rem) clamp(0.9rem, 2vw, 1.75rem);
+}
+
+.turn-block {
+  flex: 1 1 14rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+/* The single loudest thing on the page. It says the one fact a player opens the tab to
+   find, in the one size that cannot be scanned past.
+
+   Dimmed here because this is the default state - somebody else's turn - and the state
+   that matters is the other one. `.turn-headline-mine` takes it back to full ink. */
+.turn-headline {
+  font-size: clamp(2rem, 4.4vw, 3.875rem);
+  color: var(--text-dim);
+}
+
+/* Your turn, as a different object rather than the same object in another colour: a slab
+   of ink with the words knocked out of it. Two states told apart by shape are read before
+   they are read, which is what "Your move" next to "Ben to play" never managed.
+
+   In ink and not in a fifth colour, for the reason `.plate-turn` gives: the four pigments
+   mean the four suits, so whose turn it is has to be said in the one colour that means
+   nothing else. `inline-block` so the slab hugs the words instead of running the width of
+   the column, and `box-decoration-break` so a wrapped headline stays one slab. */
+/*
+ * The slab lives on the inline box inside the heading, not on the heading.
+ *
+ * Two earlier attempts are worth knowing about. On the heading with `display: block` it
+ * ran the full width of the centre column, because a flex item stretches. Pinned with
+ * `align-self: flex-start` it hugged - until the phrase wrapped, and "À toi de jouer" is
+ * four pixels too wide for the block at a desktop width, so it wrapped immediately and
+ * the slab became a rectangle the width of the block with two lines inside it.
+ *
+ * An inline box with `box-decoration-break: clone` paints one slab per line, each hugging
+ * its own words. It is what makes the phrase's length a question of taste rather than of
+ * layout.
+ */
+.turn-headline-mine {
+  /* Room for two stacked slabs. Every heading here carries 0.92, which overlapped them
+     and also cropped the accent off a capital À. */
+  line-height: 1.34;
+}
+
+.turn-headline-mine .turn-headline-ink {
+  /* Inline, not inline-block: an inline-block is one box and cannot break per line. */
+  display: inline;
+  padding: 0.1em 0.3em;
+  background: var(--text);
+  color: var(--ground);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Whose turn it is, in their own colour, at the size a 3rem line allows. Same mark as the
+   rail and the plates, indexed by seat. */
+.turn-headline-pigment {
+  display: inline-block;
+  width: 0.22em;
+  height: 0.62em;
+  margin-inline-end: 0.28em;
+  vertical-align: baseline;
+}
+
+/* ---------- Up next ---------- */
+
+/* The order of play, under the headline. It is the rail that cannot answer this: the rail
+   is in seat order and it never contains the reader, who is very often the one up next. */
+.up-next {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  margin: 0;
+}
+
+.up-next-seat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* A chevron, not a word: the line has to read as a sequence and a glyph belongs to no
+   language. On the second seat onwards, so the first one is not preceded by nothing. */
+.up-next-seat + .up-next-seat::before {
+  content: '\203A';
+  margin-inline-end: 0.25rem;
+  color: var(--text-dim);
+}
+
+.up-next-pigment {
+  flex: none;
+  width: 8px;
+  height: 1em;
+}
+
+.up-next-name {
+  font-family: var(--display);
+  font-size: var(--step-0);
+  letter-spacing: var(--track-tight);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.turn-note {
+  margin: 0;
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.turn-note-jump {
+  color: var(--accent);
+}
+
+/* ---------- Seat rail ---------- */
+
+.seat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-left: 0.85rem;
+  /* The colour comes from the inline style, indexed by seat number. Only the width
+     lives here, so a rail row cannot end up marked with nothing. */
+  border-inline-start: 4px solid var(--panel-edge);
+}
+
+.seat-away {
+  opacity: 0.55;
+}
+
+.seat-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.seat-name {
+  font-family: var(--display);
+  font-size: var(--step-1);
+  letter-spacing: var(--track-tight);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.seat-count {
+  font-family: var(--display);
+  font-size: var(--step-2);
+  line-height: 0.8;
+  color: var(--text-dim);
+}
+
+.seat-turn {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  padding-right: 0.6rem;
+}
+
+.seat-turn .seat-count {
+  color: var(--text);
+}
+
+.seat-exposed .seat-count {
+  color: var(--accent);
+}
+
+/* Said in a word as well as drawn, like every other state here: a background tint is not
+   something a screen reader can see, and `theirTurn` is already in both catalogues. */
+.seat-turn .seat-note {
+  background: var(--text);
+  color: var(--ground);
+  padding: 0.1rem 0.4rem;
+}
+
+.seat-backs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.seat-back {
+  width: 14px;
+  height: 20px;
+  background: var(--text);
+}
+
+.seat-notes {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.seat-note {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.seat-exposed .seat-note {
+  color: var(--accent);
+}
+
+/* ---------- The band along the bottom ---------- */
+
+.table-south {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem clamp(0.75rem, 2vw, 1.5rem);
+  padding: 0.9rem clamp(0.75rem, 2vw, 1.5rem) 1.1rem;
+  border-top: 3px solid var(--text);
+}
+
+/* Lit while the move is yours, around the cards you are about to touch - which is where
+   the eyes are once a game gets going, not on the headline three columns up. In ink for
+   the same reason the headline slab is: the pigments are spoken for. */
+.south-live {
+  position: relative;
+  border-top-width: 6px;
+}
+
+.south-live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* The hand sits under this. Without it the ring eats every card click. */
+  pointer-events: none;
+  border: 3px solid var(--text);
+  border-top: 0;
+  animation: south-live-breathe 2.6s ease-in-out infinite;
+}
+
+@keyframes south-live-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* The ring carries the state; the breathing does not. Solid rather than off, unlike the
+   clock pulse next door - there the number was the information and the pulse decoration,
+   here the ring is the information. */
+@media (prefers-reduced-motion: reduce) {
+  .south-live::after {
+    animation: none;
+  }
+}
+
+.table-south > .banner,
+.table-south > .hand,
+.table-south > .drawn-prompt {
+  grid-column: 1 / -1;
+}
+
+.south-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.table-south > .sort-control {
+  justify-self: end;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* The turn-ending control is the one a player aims at under a clock, and it swaps its own
+   label three ways - Draw card, End turn, Take 4 - so a width floor keeps it still while
+   the words change. Everything that appears and disappears sits to its right. */
+.controls > .btn:first-child {
+  min-width: 11rem;
+}
+
+.drawn-prompt {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* ---------- Centre stack ---------- */
+
+.centre-stack {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: clamp(0.6rem, 3vw, 1.4rem);
+}
+
+/* The discard is the card everyone is reading and the draw pile is a counter with a back
+   on it, so they are deliberately not the same size. */
+.pile {
+  width: clamp(112px, 11vw, 176px);
+}
+
+.pile-group + .pile-group .pile {
+  width: clamp(84px, 8vw, 128px);
+}
+
+.pile-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pile-label {
+  margin: 0;
+  font-size: 0.6rem;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.colour-orb {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 3px solid var(--text);
+  display: grid;
+  place-items: center;
+}
+
+.dir-badge,
+.debt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bone);
+  white-space: nowrap;
+}
+
+.dir-badge {
+  background: transparent;
+  border: 2px solid var(--text);
+  color: var(--text);
+}
+
+.debt-badge {
+  background: var(--red);
+  border: 1px solid transparent;
+  /* The figure used to sit in its own span so it could take the data face. That span
+     was also a hole punched in an English sentence, so the whole badge is now one
+     string from the catalogue and the digits keep their alignment from here. */
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* ---------- Hand and colour picker ---------- */
+
+.hand {
+  --card-w: clamp(96px, 8.5vw, 132px);
+  display: flex;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  /* Headroom for the lift. A playable card sits 10px up and rises to 18px under the
+     cursor; without this the row clipped its own top edge. */
+  padding-top: 1.4rem;
+}
+
+.hand-card {
+  width: var(--card-w);
+  flex: none;
+}
+
+/* Lifting a card on hover must not leave it behind its neighbour. */
+.hand-card:hover,
+.hand-card:focus-within {
+  position: relative;
+  z-index: 1;
+}
+
+.picker-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(8 18 15 / 0.72);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  background: var(--ground);
+  border: 3px solid var(--text);
+  color: var(--text);
+}
+
+.picker-title {
+  margin: 0;
+  font-size: var(--step-1);
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.65rem;
+}
+
+.swatch {
+  appearance: none;
+  border: 0;
+  min-width: 96px;
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+  gap: 0.2rem;
+  cursor: pointer;
+  color: var(--bone);
+  font-family: var(--display);
+  font-size: var(--step--1);
+  transition: transform 160ms ease;
+}
+
+.swatch:hover {
+  transform: translateY(-3px);
+}
+
+/* A Seven-Zero swap target. Shares .picker-grid with the colour swatches, but reads
+   as text rather than as a colour: a name and a card count are what the choice is
+   actually about, and there is no colour to show. */
+.swap-target {
+  min-height: 56px;
+  justify-content: center;
+  font-size: var(--step--1);
+}
+
+/* ---------- Hand sort ---------- */
+
+.sort-control {
+  display: inline-flex;
+  gap: 0.3rem;
+  background: transparent;
+}
+
+.sort-btn {
+  appearance: none;
+  font: inherit;
+  font-family: var(--display);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  /* 44px tall even though it is a secondary control: a tap target is a tap
+     target. The width stays tight so the row does not dominate the felt. */
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--panel-edge);
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.sort-btn:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
+.sort-btn[aria-pressed='true'] {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--ground);
+  font-weight: 700;
+}
+
+/* ---------- Chat and log ---------- */
+
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  max-height: 420px;
+  background: var(--ground);
+  border: 1px solid var(--panel-edge);
+  color: var(--text);
+}
+
+@media (min-width: 1040px) {
+  .chat-panel {
+    /* The 420px cap is for the stacked phone layout, where the panel sits in page flow
+       under the table. In the rail it takes the cell, whatever that is. */
+    max-height: none;
+    height: 100%;
+    border: 0;
+    border-left: 1px solid var(--panel-edge);
+  }
+}
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid var(--panel-edge);
+  font-family: var(--body);
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.chat-head > button {
+  margin-left: auto;
+}
+
+.chat-body {
+  /* Grows to fill the panel. Without this an empty log left the input stranded
+     under the header with a tall void beneath it. */
+  flex: 1 1 auto;
+  /* Shrinks below its content, which is what gives overflow-y a height to work
+     against. A flex child defaults to min-height:auto and refuses to go under
+     its content size, so without this the scrollbar never appears and the log
+     pushes the panel open instead. */
+  min-height: 0;
+  /* A visible, unobtrusive scrollbar: the log is meant to look scrollable. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-edge) transparent;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  overflow-y: auto;
+  font-size: var(--step--1);
+}
+
+/* Bottom-aligns a SHORT log while leaving a long one scrollable. Doing this with
+   `justify-content: flex-end` on the container looks identical when the log is
+   short, but once it overflows the excess spills out of the top of the scroll box
+   with scrollHeight stuck at clientHeight - the earliest lines become
+   unreachable, with no scrollbar to reach them. An auto top margin collapses to
+   zero as soon as the content overflows, so scrolling behaves normally. */
+.chat-body > *:first-child {
+  margin-top: auto;
+}
+
+/* Two edges, one each. What the table did hangs off the left with its rule on the left;
+   what I said hangs off the right with its rule on the right. The first attempt put
+   everything on the left, which lost the distinction; the attempt before that pushed my
+   messages right while leaving the rule on their inner edge, which is what made the
+   column look ragged. Mirroring the whole thing is what the convention actually asks for. */
+.msg {
+  display: flex;
+}
+
+.msg-mine {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.msg-bubble {
+  max-width: 82%;
+  padding: 0.1rem 0 0.1rem 0.6rem;
+  border-inline-start: 3px solid var(--panel-edge);
+}
+
+.msg-mine .msg-bubble {
+  padding: 0.1rem 0.6rem 0.1rem 0;
+  border-inline-start: 0;
+  border-inline-end: 3px solid var(--panel-edge);
+}
+
+.msg-who {
+  display: block;
+  font-weight: 700;
+  font-size: 0.72rem;
+  margin-bottom: 0.1rem;
+}
+
+.sys-line {
+  margin: 0;
+  padding: 0.1rem 0 0.1rem 0.6rem;
+  border-inline-start: 3px solid var(--panel-edge);
+  font-size: var(--step--1);
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.chat-foot {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border-top: 1px solid var(--felt-edge);
+}
+
+.chat-foot input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--step--1);
+  min-height: 44px;
+  padding: 0.55rem 0.9rem;
+  border: 2px solid var(--text);
+  background: transparent;
+  color: var(--text);
+}
+
+.chat-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.55rem 1rem;
+  background: var(--text);
+  border: 0;
+  color: var(--ground);
+  font-family: var(--display);
+  font-size: var(--step--1);
+  cursor: pointer;
+}
+
+.unread {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.3rem;
+  background: var(--red);
+  color: var(--bone);
+  display: grid;
+  place-items: center;
+  font-family: var(--data);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+/* Display type is set tight wherever it lands. It inherits the body's 1.6 otherwise,
+   which on a heading face reads as a gap rather than as leading - and inside a two-line
+   pairing it pushes the two lines further apart than the pairs are from each other. */
+.wordmark,
+.seat-name,
+.seat-count,
+.slot-name,
+.standing-name,
+.standing-count,
+.standing-rank,
+.award-holder,
+.award-value,
+.plate-count,
+.table-code-value,
+.code-display {
+  line-height: 1.05;
+}
+
+/* ---------- End of game ---------- */
+
+/* The one screen that changes register: ink ground, cream type, the pigments as the only
+   colour. The game has stopped, so the page is allowed to stop looking like the table. */
+.over-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  overflow-y: auto;
+}
+
+.over-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 58rem;
+  color: var(--bone);
+  padding: clamp(1.25rem, 3vw, 2.5rem);
+  gap: 1.5rem;
+}
+
+@media (min-width: 900px) {
+  .over-card-wide {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    column-gap: clamp(2rem, 4vw, 3.5rem);
+    max-width: 90rem;
+  }
+
+  .over-card-wide .over-main {
+    border-right: 1px solid rgb(245 241 232 / 0.22);
+    padding-right: clamp(1.5rem, 3vw, 3rem);
+  }
+}
+
+.over-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.over-eyebrow {
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  /* Yellow on ink, not the paper accent: measured, the red pigment reaches 3.4:1 here. */
+  color: var(--yellow);
+}
+
+/* Sized off the column. The winner's name is the only thing anybody reads on this
+   screen, so it takes the space a headline takes on a poster. */
+.over-title {
+  font-size: clamp(2.5rem, 7vw, 7rem);
+  line-height: 0.85;
+}
+
+.over-lede {
+  margin: 0;
+  max-width: 46ch;
+  font-size: var(--step-0);
+  line-height: 1.45;
+  color: rgb(245 241 232 / 0.72);
+  text-wrap: pretty;
+}
+
+.standings {
+  display: flex;
+  flex-direction: column;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 2px solid var(--bone);
+  border-bottom: 2px solid var(--bone);
+}
+
+.standing {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  font-size: var(--step-0);
+  color: rgb(245 241 232 / 0.78);
+}
+
+.standing + .standing {
+  border-top: 1px solid rgb(245 241 232 / 0.18);
+}
+
+.standing-won {
+  color: var(--bone);
+}
+
+.standing-rank {
+  width: 1.6rem;
+  flex: none;
+  font-family: var(--display);
+  font-size: var(--step-1);
+  color: rgb(245 241 232 / 0.5);
+}
+
+.standing-won .standing-rank {
+  color: var(--yellow);
+}
+
+.standing-pigment {
+  flex: none;
+  width: 12px;
+  align-self: center;
+  height: 1.75rem;
+}
+
+.standing-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--display);
+  font-size: var(--step-1);
+  letter-spacing: var(--track-tight);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.standing-won .standing-name {
+  font-size: var(--step-2);
+}
+
+.standing-count {
+  margin-left: auto;
+  font-family: var(--display);
+  font-size: var(--step-1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--track-tight);
+}
+
+.over-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-top: 1rem;
+}
+
+/* Inverted against the ink ground: the primary action is a block of cream, which is the
+   same gesture the paper screens make with a block of ink. */
+.over-card .btn {
+  border-color: var(--bone);
+  color: var(--bone);
+}
+
+.over-card .btn:hover:not(:disabled) {
+  background: var(--bone);
+  color: var(--ink);
+}
+
+.over-card .btn-primary {
+  background: var(--bone);
+  color: var(--ink);
+}
+
+.over-card .btn-primary:hover:not(:disabled) {
+  background: transparent;
+  color: var(--bone);
+}
+
+.over-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.awards {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A pigment rule down the left, like a seat in the rail and a line in the log: the same
+   device wherever a row belongs to somebody. */
+/* The label and the name are one thing, so they sit tight against each other and the
+   space goes BETWEEN the awards instead. It was the other way round - 1.1rem between rows
+   and a body line-height inside them - which made every label look like it belonged to
+   the name above it. */
+.award {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-left: 1rem;
+  border-inline-start: 4px solid var(--bone);
+}
+
+.award-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(245 241 232 / 0.6);
+}
+
+.award-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.award-holder {
+  font-family: var(--display);
+  font-size: var(--step-1);
+  letter-spacing: var(--track-tight);
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.award-value {
+  margin-left: auto;
+  font-family: var(--display);
+  font-size: var(--step-1);
+  font-variant-numeric: tabular-nums;
+  color: var(--yellow);
+}
+
+/* ---------- Toasts ---------- */
+
+.toaster {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: min(360px, calc(100vw - 2rem));
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.5rem 0.7rem 1rem;
+  border-radius: var(--r-md);
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-left: 4px solid var(--accent);
+  font-size: var(--step--1);
+}
+
+.toast b {
+  display: block;
+  font-family: var(--display);
+}
+
+.toast-warn {
+  border-left-color: var(--yellow);
+}
+
+.toast-bad {
+  border-left-color: var(--red);
+}
+
+@media (max-width: 620px) {
+  .table-grid {
+    grid-template-areas:
+      'north'
+      'centre'
+      'south';
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  /* Below this width three fanned side seats do not fit; they collapse into the
+     north row rather than squeezing the centre out of the viewport. */
+  .area-west,
+  .area-east {
+    grid-area: north;
+  }
+}
+
+/* ---------- Play effects ---------- */
+
+/* Every card played gets this: a fresh drop onto the discard pile. Keyed by
+   card id in CentreStack, so it replays exactly once per new top card and
+   never on a draw, which leaves the pile's top card - and its id - unchanged. */
+.pile-discard {
+  animation: fxCardDrop 380ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes fxCardDrop {
+  0% {
+    transform: translateY(-22px) scale(0.85) rotate(-6deg);
+    opacity: 0;
+  }
+  70% {
+    transform: translateY(3px) scale(1.03) rotate(1deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+/* Drawing: the pile flinches and a ghost card peels off the top. Keyed on a
+   nonce in CentreStack so it replays per draw, and localised to the pile so no
+   positional maths across a responsive layout is needed. */
+.pile-draw {
+  position: relative;
+  animation: fxDrawPulse 420ms ease-out;
+}
+
+/* The ghost card. `opacity: 0` in the base rule is load-bearing, not tidiness: the
+   keyframes run 0.55 -> 0, and with the default `animation-fill-mode: none` the
+   element snaps back to its un-animated opacity the instant they finish. Without a
+   base of 0 that is the initial value, 1 - and since `.pile-draw` is deliberately
+   never removed (`drawNonce > 0` for the rest of the game) an opaque cream
+   rectangle then covered the draw pile permanently. It was reported as the pile
+   "rendering blank and pale" while every other back on the table drew correctly,
+   which is exactly what it was: the card was still there, under a veil.
+   `.fx-flash` above states its own zero for the same reason. */
+.pile-draw::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-card);
+  background: var(--text);
+  opacity: 0;
+  pointer-events: none;
+  animation: fxDrawGhost 420ms ease-out;
+}
+
+@keyframes fxDrawPulse {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  35% {
+    transform: translateY(-9px) scale(1.06);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fxDrawGhost {
+  0% {
+    opacity: 0.55;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(0.9);
+  }
+}
+
+/* A decorative burst layered on top for skip, reverse, +2 and the two wilds -
+   the routine drop above still plays underneath every one of these. */
+.fx-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.fx-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation-name: fxFlash;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
+
+.fx-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(2rem, 8vw, 4rem);
+  letter-spacing: 0.02em;
+  -webkit-text-stroke: 4px var(--ground);
+  paint-order: stroke fill;
+  text-shadow: 0 6px 18px rgb(0 0 0 / 0.45);
+  animation-name: fxBurst;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation-fill-mode: forwards;
+}
+
+@keyframes fxFlash {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes fxBurst {
+  0% {
+    transform: translate(-50%, -50%) scale(0.35) rotate(-10deg);
+    opacity: 0;
+  }
+  35% {
+    transform: translate(-50%, -50%) scale(1.18) rotate(4deg);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.9) rotate(0deg);
+    opacity: 0;
+  }
+}
+
+/* Calling UNO earns a double bounce rather than the single swell the cards get -
+   it is a shout, not a card landing. */
+.fx-label-uno {
+  animation-name: fxUnoPop;
+  animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-size: clamp(2.4rem, 10vw, 5rem);
+  letter-spacing: 0.04em;
+}
+
+@keyframes fxUnoPop {
+  0% {
+    transform: translate(-50%, -50%) scale(0.2) rotate(-14deg);
+    opacity: 0;
+  }
+  30% {
+    transform: translate(-50%, -50%) scale(1.3) rotate(6deg);
+    opacity: 1;
+  }
+  48% {
+    transform: translate(-50%, -50%) scale(0.95) rotate(-3deg);
+    opacity: 1;
+  }
+  64% {
+    transform: translate(-50%, -50%) scale(1.12) rotate(2deg);
+    opacity: 1;
+  }
+  80% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.04) rotate(0deg);
+    opacity: 0;
+  }
+}
+
+/* The one truly "impactant" moment, by request: the table itself flinches. */
+.fx-shake {
+  animation: fxShake 500ms ease;
+}
+
+@keyframes fxShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translate(-10px, 2px) rotate(-0.6deg);
+  }
+  40% {
+    transform: translate(8px, -2px) rotate(0.5deg);
+  }
+  60% {
+    transform: translate(-6px, 1px) rotate(-0.4deg);
+  }
+  80% {
+    transform: translate(4px, -1px) rotate(0.2deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+
+  /* Back to the resting lift, not to nothing: the lift is what says the card is
+     playable, and only the extra travel under the cursor is motion. */
+  .card-button:hover:not(:disabled),
+  .card-button:focus-visible:not(:disabled) {
+    transform: translateY(-10px);
+  }
+
+  .swatch:hover {
+    transform: none;
+  }
+}
+
+/* ---------- Match goal picker ---------- */
+
+.goal-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r-md);
+}
+
+.goal-picker legend {
+  padding: 0 0.4rem;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+/* Wraps rather than shrinks: two long labels side by side would otherwise squeeze
+   below a comfortable tap width on a narrow phone. */
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  background: transparent;
+}
+
+.seg {
+  appearance: none;
+  flex: 1 1 auto;
+  min-height: 44px;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--panel-edge);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.seg-on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--ground);
+  font-family: var(--display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.goal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.goal-row label {
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+
+.goal-row input {
+  /* Just wide enough for four digits; a full-width field invites the impression
+     that a long number is wanted. */
+  width: 6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.preset-row {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.chip {
+  appearance: none;
+  min-height: 44px;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--panel-edge);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--step--1);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+}
+
+/* ---------- Felt settings: sound, card theme ---------- */
+
+/* Pinned to the felt rather than placed in the control row: it is a setting, not
+   a move, and it must not sit among the buttons a player reaches for under time
+   pressure. The card-theme cycler sits beside it for exactly the same reason and
+   therefore shares its treatment rather than restating it. */
+.sound-toggle,
+.theme-cycler {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  appearance: none;
+  border: 2px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  /* Quiet until wanted: it competes with the table for attention otherwise. */
+  opacity: 0.55;
+  transition:
+    opacity 180ms ease,
+    border-color 180ms ease;
+}
+
+.sound-toggle:hover,
+.sound-toggle:focus-visible,
+.theme-cycler:hover,
+.theme-cycler:focus-visible {
+  opacity: 1;
+  border-color: var(--accent);
+}
+
+/* Muted is a state worth seeing at a glance, so it stays fully visible. */
+.sound-toggle[aria-pressed='true'] {
+  opacity: 1;
+  color: var(--yellow);
+}
+
+/* One 44px target clear of the other, so neither is hit by mistake. */
+/* ---------- Blazing ---------- */
+
+.turn-clock {
+  margin: 0.5rem 0 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.4rem;
+  color: var(--text);
+}
+
+.turn-clock-number {
+  font-family: var(--display);
+  font-size: var(--step-3);
+  font-weight: 400;
+  /* Digits keep their column, so the layout does not twitch on every tick. */
+  font-variant-numeric: tabular-nums;
+}
+
+.turn-clock-label {
+  font-size: var(--step--1);
+  opacity: 0.7;
+}
+
+.turn-clock-urgent .turn-clock-number {
+  color: var(--red);
+  animation: clock-pulse 1s ease-in-out infinite;
+}
+
+@keyframes clock-pulse {
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+/* The number still ticks - it carries information, unlike the pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .turn-clock-urgent .turn-clock-number {
+    animation: none;
+  }
+}
+
+/* ---------- Help ---------- */
+
+.help {
+  border-top: 1px solid var(--panel-edge);
+  background: transparent;
+}
+
+.help-title {
+  margin: 0;
+  padding: 0.9rem 0 0;
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.help-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.7rem 0 0;
+}
+
+.value-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: var(--step--1);
+}
+
+.value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.value-row dt {
+  color: var(--text-dim);
+}
+
+/* A dotted leader, so the eye can cross the gap from a name to its number. Mixed
+   toward the text rather than using --panel-edge, which sits too close to the
+   panel it is drawn on to be seen at all. */
+.value-row::before {
+  content: '';
+  order: 1;
+  flex: 1;
+  border-bottom: 1px dotted color-mix(in oklab, var(--text-dim) 55%, transparent);
+  transform: translateY(-0.2em);
+}
+
+.value-row dd {
+  order: 2;
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Language ---------- */
+
+.lang-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.chip-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- Card theme previews ---------- */
+
+/* Beside the language chips, and laid out like them: both are preferences about how
+   the page looks rather than anything about the match. */
+.theme-swatch {
+  appearance: none;
+  /* A tap target is a tap target, even for a control most players use once. */
+  min-height: 44px;
+  min-width: 44px;
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r-card);
+  background: none;
+  cursor: pointer;
+  transition:
+    border-color 180ms ease,
+    transform 180ms ease;
+}
+
+.theme-swatch:hover,
+.theme-swatch:focus-visible {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.theme-swatch-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Narrow enough that four fit beside the label, wide enough that the difference
+   between the four faces is the thing you notice. */
+.theme-swatch-card {
+  display: block;
+  width: 30px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-swatch:hover,
+  .theme-swatch:focus-visible {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Voice panel
+   --------------------------------------------------------------------------- */
+
+/* Voice and chat share the third grid cell. table-body is a three-column grid,
+   so a fourth child wraps onto a new row instead of sitting in the rail. */
+.rail-talk {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rail-talk > .chat-panel {
+  /* Voice takes its content height; the log takes the rest. */
+  flex: 1 1 auto;
+}
+
+.voice-panel {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+  border: 1px solid var(--panel-edge);
+  border-bottom: 0;
+  color: var(--text);
+}
+
+@media (min-width: 1040px) {
+  .voice-panel {
+    border: 0;
+    border-left: 1px solid var(--panel-edge);
+    border-bottom: 1px solid var(--panel-edge);
+  }
+}
+
+.voice-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.7rem 0.9rem;
+  font-family: var(--body);
+  font-size: var(--step--1);
+  font-weight: 700;
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Pushes the controls to the far edge, matching the chat header. */
+.voice-head > span {
+  margin-right: auto;
+}
+
+.voice-note {
+  margin: 0;
+  padding: 0 0.9rem 0.9rem;
+  font-size: var(--step--1);
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.voice-join {
+  /* 48px is right for the controls band under the table; in a rail strip it
+     dominates the panel it sits in. */
+  min-height: 38px;
+  margin: 0 0.9rem 0.9rem;
+  font-size: var(--step--1);
+}
+
+.voice-peers {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.9rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* Same left rule in the seat pigment the log lines use, so a player is the same
+   colour wherever they appear. */
+.voice-peer {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0 0.15rem 0.6rem;
+  border-inline-start: 3px solid var(--panel-edge);
+  font-size: var(--step--1);
+  color: var(--text-dim);
+}
+
+/* Speaking is the name going to full ink, not a glow: this page is flat colour
+   separated by rules, and it has no shadow vocabulary to borrow from. */
+.voice-peer[data-speaking='true'] {
+  color: var(--text);
+}
+
+.voice-peer-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voice-peer[data-speaking='true'] .voice-peer-name {
+  font-weight: 700;
+}
+
+.voice-peer-mute {
+  margin-left: auto;
+  /* 44px next to a 22px row would set the row height on its own. */
+  width: 28px;
+  height: 28px;
+}
+
+.voice-tag {
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-dim);
+}
+
+.voice-broken {
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+.voice-shout-cloud {
+  display: flex;
+  gap: 0.4rem;
+  align-items: start;
+  cursor: pointer;
+}
+
+/* Reads as text, not as a control: sits inline inside a `.voice-note` sentence,
+   so it takes that paragraph's own font and colour rather than the platform's
+   button chrome. Focus still gets the shared `:focus-visible` outline above. */
+.btn-link {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.btn-link:disabled {
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+   The hidden face, on the moment it is found
+   --------------------------------------------------------------------------- */
+
+/* One sweep of ink across the table, then gone. Deliberately not a glow or a
+   shower of particles: the page is flat colour separated by rules and owns no
+   vocabulary for either, so the reveal borrows the one gesture it does have. */
+@keyframes unlock-sweep {
+  from {
+    opacity: 0.85;
+    clip-path: inset(0 100% 0 0);
+  }
+  60% {
+    opacity: 0.85;
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    opacity: 0;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.table-screen[data-unlocked]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  /* Ignores clicks: the reveal must never eat the tap that follows it. */
+  pointer-events: none;
+  background: var(--felt);
+  animation: unlock-sweep 900ms ease-out forwards;
+}
+
+/* Somebody who has asked not to be moved gets the face and no sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .table-screen[data-unlocked]::after {
+    animation-duration: 1ms;
+  }
+}
