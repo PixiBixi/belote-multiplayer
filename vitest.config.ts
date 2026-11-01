@@ -11,6 +11,7 @@ const fromRoot = (path: string) => fileURLToPath(new URL(path, import.meta.url))
  */
 const alias = {
   '@belote/engine': fromRoot('./packages/engine/src/index.ts'),
+  '@belote/game': fromRoot('./packages/game/src/index.ts'),
   '@belote/protocol': fromRoot('./packages/protocol/src/index.ts'),
 }
 
