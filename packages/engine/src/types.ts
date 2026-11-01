@@ -50,7 +50,7 @@ export const DEFAULT_TABLE_RULES: TableRules = {
   variant: 'classic',
   allTrumps: false,
   vache: false,
-  pisse: false,
+  pisse: true,
   mustOvertrump: false,
   declarations: true,
   target: 1000,
