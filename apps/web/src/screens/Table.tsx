@@ -31,6 +31,15 @@ export function Table({ view, lobby, onPlay, onNextHand, onRestart, onLeave, sid
   const name = (seat: number) => seatName(view.seats, seat)
   const [panel, setPanel] = useState<'none' | 'sheet' | 'rules' | 'last' | 'side'>('none')
 
+  useEffect(() => {
+    if (panel === 'none') return undefined
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPanel('none')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [panel])
+
   /* A completed trick stays on the felt for a beat, then slides to its winner. */
   const total = hand.tricksWon[0] + hand.tricksWon[1]
   const prevTotal = useRef(total)
@@ -199,10 +208,22 @@ export function Table({ view, lobby, onPlay, onNextHand, onRestart, onLeave, sid
           </div>
         </div>
       )}
+      {panel === 'side' && <div className="drawer-backdrop" onClick={() => setPanel('none')} />}
       <aside
         className={`side-drawer ${panel === 'side' ? 'open' : ''}`}
         aria-hidden={panel !== 'side'}
+        inert={panel !== 'side'}
       >
+        <div className="drawer-head">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={t.sheet.close}
+            onClick={() => setPanel('none')}
+          >
+            ✕
+          </button>
+        </div>
         {side}
       </aside>
     </div>
