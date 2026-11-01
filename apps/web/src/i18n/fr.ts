@@ -110,6 +110,7 @@ export const fr = {
     reserve: (n: number) => `${n} en réserve`,
     dealer: 'Donneur',
     yourTurn: 'À toi de jouer',
+    ledBy: (name: string) => `Entame : ${name}`,
     sortBy: (mode: string) => `Tri des cartes : ${mode}. Toucher pour changer`,
     sortModes: {
       alternate: 'Alterné',

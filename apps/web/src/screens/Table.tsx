@@ -3,7 +3,7 @@ import { TRICK_PAUSE_MS, type LobbyView, type PlayerView, type SeatInfo } from '
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { BiddingPanel } from '../components/BiddingPanel.js'
 import { HandResultPanel, GameOverPanel } from '../components/HandResultPanel.js'
-import { CardBack, PlayingCard, TrumpGlyph } from '../components/PlayingCard.js'
+import { CardBack, PlayingCard, SuitIcon, TrumpGlyph } from '../components/PlayingCard.js'
 import { RulesSheet, ScoreSheet } from '../components/ScoreSheet.js'
 import { useCountdown } from '../hooks/useCountdown.js'
 import { useMessages } from '../i18n/index.js'
@@ -151,11 +151,17 @@ export function Table({ view, lobby, onPlay, onNextHand, onRestart, onLeave, sid
                 key={p.card.id}
                 card={p.card}
                 trump={trump !== null && (trump === 'AT' || p.card.suit === trump)}
-                className={`in-trick at-${sideOf(p.seat, me)}`}
+                className={`in-trick at-${sideOf(p.seat, me)}${i === 0 ? ' is-lead' : ''}`}
                 style={{ zIndex: i + 1 }}
               />
             ))}
           </div>
+          {shownTrick[0] && collectingTo === null && (
+            <p className="trick-lead">
+              {t.table.ledBy(shownTrick[0].seat === me ? t.lobby.you : name(shownTrick[0].seat))}
+              <SuitIcon suit={shownTrick[0].card.suit} />
+            </p>
+          )}
         </div>
 
         {showResult && hand.result && (
@@ -333,7 +339,8 @@ function ContractChip({ view, name }: { view: PlayerView; name: (seat: number) =
         <TrumpGlyph trump={c.trump} />
       </span>
       <span className="contract-text">
-        <strong>{t.table.contractLine(c.value, c.trump)}</strong>
+        <strong className="contract-long">{t.table.contractLine(c.value, c.trump)}</strong>
+        {c.value !== null && <strong className="contract-short">{c.value}</strong>}
         <small>{c.taker === null ? t.table.vacheLabel : t.table.takerLabel(name(c.taker))}</small>
       </span>
       {c.multiplier > 1 && (

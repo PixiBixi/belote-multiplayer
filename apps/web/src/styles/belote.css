@@ -1067,6 +1067,7 @@ button:focus-visible {
   justify-items: center;
   font-size: 0.68rem;
   color: var(--text-dim);
+  white-space: nowrap;
 }
 
 .score-meta .reserve {
@@ -1116,6 +1117,10 @@ button:focus-visible {
 .contract-text small {
   color: var(--text-dim);
   font-size: 0.72rem;
+}
+
+.contract-short {
+  display: none;
 }
 
 .contract-mult {
@@ -1377,22 +1382,22 @@ button:focus-visible {
 }
 
 .in-trick.at-bottom {
-  transform: translate(0, 34%) rotate(-3deg);
+  transform: translate(0, 48%) rotate(-3deg);
   --from: translate(0, 220%);
 }
 
 .in-trick.at-top {
-  transform: translate(0, -34%) rotate(4deg);
+  transform: translate(0, -48%) rotate(4deg);
   --from: translate(0, -220%);
 }
 
 .in-trick.at-left {
-  transform: translate(-48%, 0) rotate(-9deg);
+  transform: translate(-66%, 0) rotate(-9deg);
   --from: translate(-260%, 0);
 }
 
 .in-trick.at-right {
-  transform: translate(48%, 0) rotate(8deg);
+  transform: translate(66%, 0) rotate(8deg);
   --from: translate(260%, 0);
 }
 
@@ -2541,6 +2546,16 @@ button:focus-visible {
     padding: 3px 10px 3px 3px;
   }
 
+  /* Short landscape bar: the glyph names the trump and the plate star the taker. */
+  .contract-chip .contract-long,
+  .contract-chip .contract-text small {
+    display: none;
+  }
+
+  .contract-chip .contract-short {
+    display: inline;
+  }
+
   .contract-chip.empty {
     display: none;
   }
@@ -2623,6 +2638,13 @@ button:focus-visible {
   }
 
   /* Bottom left, beside the fan: my plate holds the left edge and the bid panel the right. */
+  /* Beside the trick: under it, the caption would sit on the turn hint. */
+  .centre .trick-lead {
+    top: 50%;
+    left: 100%;
+    translate: 4px -50%;
+  }
+
   .hint-row .sort-btn {
     position: absolute;
     /* Abspos in a grid: the grid area is the containing block, so span the whole row. */
@@ -2727,4 +2749,37 @@ button:focus-visible {
 
 .sort-btn:hover {
   border-color: var(--gold);
+}
+
+/* Who led the trick: a white outline (gold already means trump) and a caption. */
+.in-trick.is-lead {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.trick-lead {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  translate: -50% 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--cream);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.trick-lead .suit-icon {
+  width: 1em;
+  height: 1em;
+}
+
+.trick-lead .suit-H,
+.trick-lead .suit-D {
+  color: #ff8a80;
 }

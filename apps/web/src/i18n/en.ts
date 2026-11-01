@@ -120,6 +120,7 @@ export const en: Messages = {
     reserve: (n) => `${n} in reserve`,
     dealer: 'Dealer',
     yourTurn: 'Your turn',
+    ledBy: (name) => `Led by ${name}`,
     sortBy: (mode: string) => `Card order: ${mode}. Tap to change`,
     sortModes: {
       alternate: 'Alternating',
