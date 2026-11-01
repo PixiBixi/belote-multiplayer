@@ -82,6 +82,16 @@ for (const name of PHONES) {
       expect(g.hscroll).toBe(false)
       expect(g.outside).toEqual([])
       expect(g.crowding).toBe(0)
+
+      // The chat drawer covers the phone: it must close from its button and from the backdrop.
+      const drawer = page.locator('.side-drawer')
+      await page.getByRole('button', { name: 'Discussion' }).click()
+      await expect(drawer).toHaveClass(/open/)
+      await drawer.getByRole('button', { name: 'Fermer' }).click()
+      await expect(drawer).not.toHaveClass(/open/)
+      await page.getByRole('button', { name: 'Discussion' }).click()
+      await page.locator('.drawer-backdrop').click({ position: { x: 5, y: 300 } })
+      await expect(drawer).not.toHaveClass(/open/)
     })
   })
 }
