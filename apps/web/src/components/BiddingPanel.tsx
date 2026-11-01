@@ -21,27 +21,33 @@ export function BiddingPanel({ hand, moves, variant, onMove }: Props) {
   if (variant === 'classic') {
     const takes = moves.filter((m): m is Extract<Move, { type: 'take' }> => m.type === 'take')
     return (
-      <div className="bid-panel" role="group" aria-label={t.table.chooseTrump}>
+      <div className="bid-panel classic" role="group" aria-label={t.table.chooseTrump}>
         <p className="bid-hint">{hand.biddingRound === 1 ? t.table.roundOne : t.table.roundTwo}</p>
-        <div className="bid-row">
+        <div className="bid-tiles">
           {takes.map((m) => (
             <button
               key={m.trump}
               type="button"
-              className={`btn bid-take trump-${m.trump}`}
+              className={`bid-tile bid-take trump-${m.trump}`}
+              aria-label={t.table.take(m.trump)}
               onClick={() => onMove(m)}
             >
-              <TrumpGlyph trump={m.trump} />
-              <span>{t.table.take(m.trump)}</span>
+              <span className="bid-tile-glyph">
+                <TrumpGlyph trump={m.trump} />
+              </span>
+              <span className="bid-tile-label">{t.trumpName(m.trump)}</span>
             </button>
           ))}
           {canPass && (
             <button
               type="button"
-              className="btn btn-ghost"
+              className="bid-tile bid-pass"
               onClick={() => onMove({ type: 'pass' })}
             >
-              {t.table.pass}
+              <span className="bid-tile-glyph" aria-hidden="true">
+                ✕
+              </span>
+              <span className="bid-tile-label">{t.table.pass}</span>
             </button>
           )}
         </div>

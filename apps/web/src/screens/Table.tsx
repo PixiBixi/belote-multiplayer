@@ -261,6 +261,15 @@ function ScoreBoard({ view }: { view: PlayerView }) {
   const them = 1 - us
   const target = view.rules.target
   const pct = (n: number) => `${Math.min(100, (n / target) * 100)}%`
+  const live = view.hand.phase === 'playing'
+  const handPts = (team: number) => {
+    const n = view.hand.pointsWon[team] ?? 0
+    return live ? (
+      <span className="score-hand" title={t.table.handPoints(n)} aria-label={t.table.handPoints(n)}>
+        +{n}
+      </span>
+    ) : null
+  }
   return (
     <div
       className="scoreboard"
@@ -269,6 +278,7 @@ function ScoreBoard({ view }: { view: PlayerView }) {
       <div className="score us">
         <span className="score-label">{t.table.us}</span>
         <span className="score-value">{view.scores[us]}</span>
+        {handPts(us)}
         <span className="score-bar">
           <span style={{ width: pct(view.scores[us] ?? 0) }} />
         </span>
@@ -281,6 +291,7 @@ function ScoreBoard({ view }: { view: PlayerView }) {
       <div className="score them">
         <span className="score-label">{t.table.them}</span>
         <span className="score-value">{view.scores[them]}</span>
+        {handPts(them)}
         <span className="score-bar">
           <span style={{ width: pct(view.scores[them] ?? 0) }} />
         </span>

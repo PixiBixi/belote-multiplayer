@@ -1002,7 +1002,7 @@ button:focus-visible {
 
 .score {
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: auto auto auto;
   align-items: baseline;
   column-gap: 8px;
   min-width: 82px;
@@ -1027,6 +1027,15 @@ button:focus-visible {
   font-family: var(--display);
   font-size: 1.35rem;
   font-variant-numeric: tabular-nums;
+}
+
+/* Points won in the hand being played, next to the match total. */
+.score-hand {
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  animation: pop 0.3s ease;
 }
 
 .score-bar {
@@ -1540,6 +1549,134 @@ button:focus-visible {
   font-size: 1.3rem;
 }
 
+/* Classic bidding: one card-shaped tile per option, Passer set apart as an outline. */
+.bid-panel.classic {
+  justify-self: center;
+  padding: 12px 16px 14px;
+}
+
+.bid-panel.classic .bid-hint {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+}
+
+.bid-tiles {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.bid-tile {
+  flex: 0 1 76px;
+  min-width: 0;
+  height: 96px;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  align-items: center;
+  padding: 10px 4px 9px;
+  border: 0;
+  border-radius: 12px;
+  font: inherit;
+  color: var(--ink);
+  background: linear-gradient(160deg, #fffdf7, #ece2cc);
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.25),
+    0 10px 20px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition:
+    translate 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.bid-tile:hover,
+.bid-tile:focus-visible {
+  translate: 0 -4px;
+  box-shadow:
+    0 0 0 3px var(--gold),
+    0 14px 24px rgba(0, 0, 0, 0.4);
+  outline: none;
+}
+
+.bid-tile:active {
+  translate: 0 -1px;
+}
+
+.bid-tile-glyph {
+  font-size: 2.1rem;
+  line-height: 1;
+}
+
+.bid-tile-glyph .trump-tag {
+  font-size: 0.62em;
+  padding: 0.2em 0.35em;
+}
+
+.bid-tile-label {
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.bid-tile.trump-AT,
+.bid-tile.trump-SA {
+  background: linear-gradient(160deg, #fbe3a1, var(--gold) 55%, var(--gold-deep));
+}
+
+.bid-tile.bid-pass {
+  margin-left: 6px;
+  color: var(--cream);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 2px var(--glass-edge);
+}
+
+.bid-tile.bid-pass .bid-tile-glyph {
+  font-size: 1.5rem;
+  opacity: 0.7;
+}
+
+.bid-tile.bid-pass:hover,
+.bid-tile.bid-pass:focus-visible {
+  box-shadow:
+    inset 0 0 0 2px var(--cream),
+    0 10px 20px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 640px) {
+  .bid-tiles {
+    gap: 6px;
+  }
+
+  .bid-tile {
+    height: 84px;
+  }
+
+  .bid-tile-glyph {
+    font-size: 1.8rem;
+  }
+
+  .bid-tile.bid-pass {
+    margin-left: 2px;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .bid-tile {
+    height: 70px;
+    padding: 6px 4px;
+  }
+
+  .bid-tile-glyph {
+    font-size: 1.5rem;
+  }
+}
+
 .chip-trump {
   background: var(--cream);
   font-size: 1.3rem;
@@ -1957,7 +2094,6 @@ button:focus-visible {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.08);
   border-inline-start: 3px solid var(--glass-edge);
-  overflow-wrap: anywhere;
   font-size: 0.9rem;
 }
 
