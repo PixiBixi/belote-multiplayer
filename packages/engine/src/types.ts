@@ -48,10 +48,10 @@ export type TableRules = {
 
 export const DEFAULT_TABLE_RULES: TableRules = {
   variant: 'classic',
-  allTrumps: true,
-  vache: true,
+  allTrumps: false,
+  vache: false,
   pisse: false,
-  mustOvertrump: true,
+  mustOvertrump: false,
   declarations: true,
   target: 1000,
 }

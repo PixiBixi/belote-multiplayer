@@ -83,7 +83,7 @@ describe('schemas', () => {
   it('fills rules a client omits and rejects an odd target', () => {
     expect(tableRulesSchema.parse({ variant: 'coinche' })).toMatchObject({
       variant: 'coinche',
-      vache: true,
+      vache: false,
       target: 1000,
     })
     expect(tableRulesSchema.safeParse({ target: 42 }).success).toBe(false)

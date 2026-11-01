@@ -87,7 +87,7 @@ describe('full games with random legal moves', () => {
 
 describe('bidding', () => {
   it('classic: four passes lead to a second round, eight to a vache in sans atout', () => {
-    let s = createGame({ seed: 7 })
+    let s = createGame({ seed: 7, rules: { vache: true } })
     for (let i = 0; i < 4; i++) s = step(s, { type: 'pass' })
     expect(s.hand.biddingRound).toBe(2)
     for (let i = 0; i < 4; i++) s = step(s, { type: 'pass' })

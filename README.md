@@ -20,10 +20,10 @@ Two variants, and every table option is set by the host in the lobby.
 
 | Option                  | Default | Effect                                                                                                                          |
 | ----------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Tout atout / sans atout | on      | AT and SA are biddable. Both are scored out of 162 like a suit contract.                                                        |
-| Vache                   | on      | When everyone passes, the hand is played in sans atout without a taker; each team keeps its points. Off: redeal.                |
+| Tout atout / sans atout | off     | AT and SA are biddable. Both are scored out of 162 like a suit contract.                                                        |
+| Vache                   | off     | When everyone passes, the hand is played in sans atout without a taker; each team keeps its points. Off: redeal.                |
 | Pisse                   | off     | You may discard instead of trumping when your partner holds the trick.                                                          |
-| Must overtrump          | on      | A trump played on a trump must beat it when possible.                                                                           |
+| Must overtrump          | off     | A trump played on a trump must beat it when possible.                                                                           |
 | Declarations            | on      | Tierce 20, cinquante 50, cent 100, carrés (J 200, 9 150, A/10/K/Q 100), declared on the first trick. Only the best team scores. |
 | Target                  | 1000    | 501, 1000, 1500 or 2000.                                                                                                        |
 | Turn clock              | off     | 15, 30 or 60 seconds per move.                                                                                                  |

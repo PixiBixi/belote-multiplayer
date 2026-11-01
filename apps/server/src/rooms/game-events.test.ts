@@ -30,7 +30,7 @@ describe('diffEvents', () => {
     // A seed whose bidding ends in a played hand rather than a redeal.
     let found: ReturnType<typeof playOut> | null = null
     for (let seed = 1; seed < 200 && found === null; seed++) {
-      const out = playOut(createGame({ seed }))
+      const out = playOut(createGame({ seed, rules: { vache: true } }))
       if (out.events.some((e) => e.type === 'handEnded')) found = out
     }
     if (found === null) throw new Error('no seed produced a played hand')
@@ -54,7 +54,7 @@ describe('diffEvents', () => {
 
   it('counts the card points of a trick', () => {
     for (let seed = 1; seed < 200; seed++) {
-      const { events } = playOut(createGame({ seed }))
+      const { events } = playOut(createGame({ seed, rules: { vache: true } }))
       const tricks = events.flatMap((e) => (e.type === 'trickWon' ? [e.points] : []))
       if (tricks.length === 8) {
         expect(tricks.every((p) => p >= 0)).toBe(true)
