@@ -331,6 +331,41 @@ describe('leave, disconnect, takeover and reclaim', () => {
     })
   })
 
+  it('hands a stand-in seat back to a mid-game join under the same name, with its token', () => {
+    const { manager } = managerWith()
+    const { room, token } = startedTable(manager)
+    room.leave('socket-0')
+
+    const back = room.join(' ana ', 'socket-other-browser')
+    expect(back).toEqual({ okay: true, value: { seat: 0, sessionToken: token, reclaimed: true } })
+    expect(room.seatInfos()[0]).toMatchObject({ kind: 'human', name: 'Ana', status: 'active' })
+  })
+
+  it('hands a disconnected seat back to a mid-game join under the same name', () => {
+    const { manager } = managerWith()
+    const { room, token } = startedTable(manager)
+    room.disconnect('socket-0')
+
+    expect(room.join('Ana', 'socket-other-browser')).toEqual({
+      okay: true,
+      value: { seat: 0, sessionToken: token, reclaimed: true },
+    })
+  })
+
+  it('still refuses a mid-game join that matches no absent player', () => {
+    const { manager } = managerWith()
+    const { room } = startedTable(manager)
+    expect(room.join('Ana', 'socket-intruder')).toEqual({
+      okay: false,
+      error: 'game_already_started',
+    })
+    room.leave('socket-0')
+    expect(room.join('Eve', 'socket-intruder')).toEqual({
+      okay: false,
+      error: 'game_already_started',
+    })
+  })
+
   it('keeps a disconnected human seated, and a bot plays their turn after the grace', () => {
     const { manager, clock } = managerWith()
     const { room } = startedTable(manager)

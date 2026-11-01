@@ -321,6 +321,13 @@ export function registerSocketHandlers(
         if (refused(joined, ack)) return
         attach(room, joined.value.seat)
         ack({ ok: true, sessionToken: joined.value.sessionToken, seat: joined.value.seat })
+        if (joined.value.reclaimed) {
+          // Same tail as room:rejoin: the seat came back by name instead of by token.
+          rooms.cancelGrace(room, joined.value.seat)
+          retime(room)
+          publish(room, [{ type: 'seatReconnected', seat: joined.value.seat }])
+          return
+        }
         broadcastLobby(room)
       })
     })

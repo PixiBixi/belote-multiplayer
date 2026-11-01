@@ -227,8 +227,11 @@ export class Room {
 
   /* ---------- lobby ---------- */
 
-  join(name: string, socketId: string): Result<{ seat: number; sessionToken: string }, ErrorCode> {
-    if (this.phase !== 'lobby') return err('game_already_started')
+  join(
+    name: string,
+    socketId: string,
+  ): Result<{ seat: number; sessionToken: string; reclaimed?: true }, ErrorCode> {
+    if (this.phase !== 'lobby') return this.reclaimByName(name, socketId)
     // Idempotent per socket: a double tap otherwise seats a ghost that never disconnects.
     const already = this.seatOfSocket(socketId)
     const existing = already === null ? undefined : this.slots[already]
@@ -450,6 +453,29 @@ export class Room {
       seat,
       supersededSocketId: previous !== null && previous !== socketId ? previous : null,
     })
+  }
+
+  /**
+   * A mid-game join from a browser without the session token: the name alone gives back
+   * an absent player's seat. Trusts the table code and the name, which suits friends only.
+   */
+  private reclaimByName(
+    name: string,
+    socketId: string,
+  ): Result<{ seat: number; sessionToken: string; reclaimed: true }, ErrorCode> {
+    const wanted = name.trim().toLocaleLowerCase()
+    const same = (n: string) => n.trim().toLocaleLowerCase() === wanted
+    let token: string | null = null
+    for (const s of this.slots) {
+      if (s.kind === 'human' && s.status === 'disconnected' && same(s.name)) token = s.sessionToken
+      else if (s.kind === 'bot' && s.standIn !== null && same(s.standIn.name))
+        token = s.standIn.sessionToken
+      if (token !== null) break
+    }
+    if (token === null) return err('game_already_started')
+    const rejoined = this.rejoin(token, socketId)
+    if (!rejoined.okay) return rejoined
+    return ok({ seat: rejoined.value.seat, sessionToken: token, reclaimed: true })
   }
 
   /** Called by RoomManager when the reclaim window elapses on a disconnected human. */
