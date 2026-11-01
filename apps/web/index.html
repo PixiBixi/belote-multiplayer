@@ -2,7 +2,13 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- viewport-fit=cover: the felt runs under the notch; belote.css pads with safe-area insets. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- Added to the home screen, the table opens full screen without Safari's bars. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Belote" />
     <meta name="color-scheme" content="light dark" />
     <!-- A spade on felt: the one mark that survives 16px, which is the size that actually
          decides a favicon. SVG for the tab; iOS ignores an SVG icon entirely and falls back
