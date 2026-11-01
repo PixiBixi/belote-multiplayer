@@ -1,194 +1,176 @@
-export type Color = 'R' | 'G' | 'B' | 'Y'
-export const COLORS: readonly Color[] = ['R', 'G', 'B', 'Y'] as const
+/** Spades, hearts, diamonds, clubs. */
+export type Suit = 'S' | 'H' | 'D' | 'C'
+export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'] as const
 
-export type NumberValue = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+/** Natural order, used for sequences (tierce, cinquante, cent). */
+export type Rank = '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'A'
+export const RANKS: readonly Rank[] = ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'] as const
 
-/** Unique identifier for one card instance, e.g. `'7R#42'`. */
+/** Rank followed by suit, e.g. `'JH'` or `'10S'`. Unique in a 32-card deck. */
 export type CardId = string & { readonly __brand: 'CardId' }
 
-export type Card =
-  | { id: CardId; kind: 'number'; color: Color; value: NumberValue }
-  | { id: CardId; kind: 'skip' | 'reverse' | 'draw2'; color: Color }
-  | { id: CardId; kind: 'wild' | 'wild4' }
+export type Card = { id: CardId; suit: Suit; rank: Rank }
 
-export type WildCard = Extract<Card, { kind: 'wild' | 'wild4' }>
-export type ColouredCard = Exclude<Card, WildCard>
+/** A suit, tout atout (every suit ranks as trump) or sans atout (no trump at all). */
+export type Trump = Suit | 'AT' | 'SA'
 
-/**
- * A type predicate rather than a boolean expression at each call site. Writing
- * `card.kind === 'wild' || card.kind === 'wild4'` inline does NOT narrow the
- * union in the branches that follow, so reading `card.color` afterwards fails to
- * compile - a trap this codebase walked into three separate times.
- */
-export function isWild(card: Card): card is WildCard {
-  return card.kind === 'wild' || card.kind === 'wild4'
-}
+export type Team = 0 | 1
+export const teamOf = (seat: number): Team => (seat % 2) as Team
+export const SEATS = 4
 
-export type SeatStatus = 'active' | 'disconnected' | 'left'
-
-export type Seat = {
-  index: number
-  name: string
-  status: SeatStatus
-  hand: Card[]
-  /** Reset to false at the start of each of this seat's turns. */
-  unoCalled: boolean
-  /**
-   * Set when this seat reached one card without calling UNO, on a table that
-   * opted into `liar`. Cleared when it calls UNO, when somebody calls it out, or
-   * when its next turn ends.
-   *
-   * A field rather than a timer because the engine has no clock and `Room` is
-   * deliberately timer-free. The window is measured in turns, which the engine
-   * already counts.
-   */
-  vulnerable: boolean
-}
+export type Variant = 'classic' | 'coinche'
 
 /**
- * Rules a table may switch, chosen by the host at creation. The house rules are off by
- * default: a group that wants plain UNO gets plain UNO. `playDrawnCard` is the exception,
- * and it is not a house rule - see its own comment below.
- *
- * Lives here rather than beside `MatchPace` in the protocol, unlike the clock: a
- * time limit is a house setting the engine never sees, while these change what
- * the rules ARE, so the reducer has to read them - and the engine cannot import
- * the protocol.
+ * Rules a table chooses at creation. They change what the rules ARE, so the reducer
+ * reads them, and they are part of the state so a game replays from (seed, rules, moves).
  */
 export type TableRules = {
-  /** Forgetting UNO costs nothing unless somebody calls it out. */
-  liar: boolean
+  variant: Variant
+  /** Tout atout and sans atout may be bid. */
+  allTrumps: boolean
   /**
-   * A 7 swaps hands with a chosen player; a 0 passes every hand one seat along in
-   * the current direction of play.
+   * When all four pass, the hand is played anyway in sans atout with no taker and each
+   * team keeps what it makes. Off: the cards are redealt.
    */
-  sevenZero: boolean
+  vache: boolean
   /**
-   * A card identical to the discard top - same colour AND same value or kind - may
-   * be laid down out of turn, and play then continues from whoever laid it.
-   *
-   * The one option that inverts the assumption the rest of the engine rests on,
-   * that only `currentSeat` can act, and the only one that MOVES `currentSeat`.
+   * A seat that cannot follow may discard instead of trumping when its partner holds the
+   * trick. Off: it must trump whenever it can.
    */
-  jumpIn: boolean
-  /**
-   * The official rule: a drawn card that can be played may be laid down, so a voluntary
-   * draw does not end the turn on its own.
-   *
-   * On by default, and the only flag here that is. The three above are house rules a
-   * group either plays or does not; this one is in the rulebook, and a table with it off
-   * is playing the simplification this project shipped first rather than playing UNO. It
-   * stays a flag for the groups who learned it the other way, and because the sub-state
-   * it introduces is worth being able to switch off.
-   */
-  playDrawnCard: boolean
+  pisse: boolean
+  /** Must play a higher trump (or a higher card of the led suit at tout atout) when able. */
+  mustOvertrump: boolean
+  /** Tierce, cinquante, cent and carrés are scored. Belote-rebelote always is. */
+  declarations: boolean
+  /** First team to reach this many points wins the game. */
+  target: number
 }
 
-/**
- * What a host who picks nothing gets: plain UNO with no house rules, and the official
- * drawn-card rule in force.
- *
- * `playDrawnCard: true` is deliberately the odd one out. The `false`s are not a pattern
- * to follow - they mark the three optional house rules, while this one is the rulebook.
- */
 export const DEFAULT_TABLE_RULES: TableRules = {
-  liar: false,
-  sevenZero: false,
-  jumpIn: false,
-  playDrawnCard: true,
+  variant: 'classic',
+  allTrumps: true,
+  vache: true,
+  pisse: false,
+  mustOvertrump: true,
+  declarations: true,
+  target: 1000,
 }
 
-/**
- * Outstanding draw debt. `kind` mirrors the card's own `kind`, which turns the
- * "strictly same type" rule into a plain equality check.
- */
-export type PendingDraw = { amount: number; kind: 'draw2' | 'wild4' }
+export const COINCHE_VALUES: readonly number[] = [80, 90, 100, 110, 120, 130, 140, 150, 160]
+export const CAPOT_VALUE = 250
+export const GENERALE_VALUE = 500
+
+export type DeclarationKind = 'tierce' | 'cinquante' | 'cent' | 'carre'
+
+export type Declaration = {
+  kind: DeclarationKind
+  points: number
+  cards: CardId[]
+  /** Highest card: the top of a sequence, the rank of a carré. */
+  top: Rank
+  /** Set for sequences, absent for carrés. */
+  suit?: Suit
+}
+
+export type Contract = {
+  /** Null on a vache hand, which nobody took. */
+  taker: number | null
+  trump: Trump
+  /** Coinche only: the bid value, 250 for capot, 500 for générale. Null in classic. */
+  value: number | null
+  multiplier: 1 | 2 | 4
+}
+
+export type PlayedCard = { seat: number; card: Card }
+export type Trick = { cards: PlayedCard[]; winner: number }
+
+/** Everything said during the bidding, in order, for the client to replay. */
+export type BidEvent =
+  | { seat: number; type: 'pass' }
+  | { seat: number; type: 'take'; trump: Trump }
+  | { seat: number; type: 'bid'; value: number; trump: Trump }
+  | { seat: number; type: 'coinche' }
+  | { seat: number; type: 'surcoinche' }
+
+export type HandResult = {
+  kind: 'played' | 'redeal'
+  contract: Contract | null
+  /** Card points plus dix de der, 250 for a capot. Indexed by team. */
+  trickPoints: [number, number]
+  declarationPoints: [number, number]
+  belotePoints: [number, number]
+  /** Team that won every trick, if any. */
+  capot: Team | null
+  /** Null on a vache or a redeal. */
+  made: boolean | null
+  litige: boolean
+  /** What the hand added to each team's score, reserve included. */
+  scored: [number, number]
+}
+
+export type HandPhase = 'bidding' | 'playing' | 'done'
+
+export type HandState = {
+  phase: HandPhase
+  dealer: number
+  currentSeat: number
+  /** Indexed by seat. */
+  hands: Card[][]
+  /** Classic only: cards left to deal once somebody takes. */
+  stock: Card[]
+  /** Classic only: the card turned up for the first round. */
+  turned: Card | null
+  /** Classic only: 1 or 2. */
+  biddingRound: 1 | 2
+  bids: BidEvent[]
+  /** Passes since the last bid, coinche or start of a round. */
+  passes: number
+  /** Coinche: highest bid so far. */
+  highBid: { seat: number; value: number; trump: Trump } | null
+  coinchedBy: number | null
+  surcoinched: boolean
+  contract: Contract | null
+  trick: PlayedCard[]
+  tricks: Trick[]
+  /** Declared during the first trick, by seat. */
+  declared: Declaration[][]
+  /** Decided at the end of the first trick: the team whose declarations score. */
+  declarationWinner: Team | null
+  /** Seat holding king and queen of trump, scored automatically. */
+  beloteHolder: number | null
+  result: HandResult | null
+}
 
 export type GamePhase = 'playing' | 'finished'
 
 export type GameState = {
-  seats: Seat[]
-  currentSeat: number
-  direction: 1 | -1
-  /** The top of the draw pile is the LAST element. */
-  drawPile: Card[]
-  /** The top of the discard pile is the LAST element. */
-  discardPile: Card[]
-  /** Distinct from the top card's colour: after a wild the two diverge. */
-  currentColor: Color
-  pendingDraw: PendingDraw | null
-  /**
-   * The card the seat on turn has just drawn voluntarily and may still lay down. Null the
-   * rest of the time, which is nearly always.
-   *
-   * The one sub-state in the game: while it is set the turn is not over, and the seat may
-   * play exactly this card or pass. Set only when the card is genuinely playable, so a
-   * choice appears only when there is one, and cleared on every turn change from any
-   * cause - a stale value would let a seat play a card it no longer holds.
-   */
-  drawnCard: CardId | null
+  rules: TableRules
   rngState: number
   phase: GamePhase
-  winner: number | null
-  /** Which optional rules this table plays. Part of the state, so a game stays
-   *  replayable from `(seed, rules, moves[])` alone. */
-  rules: TableRules
-}
-
-/**
- * How a match ends. A one-round match is a single game, which is why there is no
- * separate 'single' variant: a mode meaning "stop after one round" is what a
- * one-round match already is.
- */
-export type MatchGoal = { kind: 'points'; target: number } | { kind: 'rounds'; count: number }
-
-/**
- * Match bookkeeping, deliberately outside GameState - a round has no business
- * knowing it belongs to a match, and the property tests that guard the round rules
- * should not have to carry match state through them.
- */
-export type MatchState = {
-  goal: MatchGoal
-  /** Cumulative points, indexed by seat. */
-  scores: number[]
-  /** 1-based, and names the round about to be played. */
-  round: number
+  /** Cumulative, indexed by team. */
+  scores: [number, number]
+  /** Points held over by a litige, for the next team that wins a hand. */
+  reserve: number
+  handNumber: number
+  hand: HandState
+  history: HandResult[]
+  winner: Team | null
 }
 
 export type Move =
-  /**
-   * `chosenColor` for a wild and `swapWith` for a 7 on a Seven-Zero table are the
-   * same idea: a second decision the card demands, carried by the move rather than
-   * asked for afterwards. `legalMoves` enumerates them, so neither is ever a
-   * free-form value the reducer has to validate on its own.
-   *
-   * A jump-in is this same move played by a seat whose turn it is not, rather than
-   * a variant of its own: the card resolves exactly as it would have on their turn,
-   * and a client that renders whatever `play` it was offered needs no new idea to
-   * show one.
-   */
-  | { type: 'play'; cardId: CardId; chosenColor?: Color; swapWith?: number }
-  | { type: 'draw' }
-  | { type: 'acceptDraw' }
-  /**
-   * Declining to play the card just drawn, which ends the turn.
-   *
-   * A move of its own because drawing no longer ends a turn on a table that plays the
-   * drawn card, so something has to - and it must be explicit rather than inferred from a
-   * timeout, which would make an idle player and a deliberate one look alike.
-   */
   | { type: 'pass' }
-  | { type: 'callUno' }
-  /**
-   * Accusing another seat of holding one card without having called UNO. The one
-   * move that is legal off turn: an accusation you could only make on your own
-   * turn would be useless.
-   */
-  | { type: 'callOut'; target: number }
+  /** Classic: take on the turned card's suit in round 1, any other suit in round 2. */
+  | { type: 'take'; trump: Trump }
+  /** Coinche. */
+  | { type: 'bid'; value: number; trump: Trump }
+  | { type: 'coinche' }
+  | { type: 'surcoinche' }
+  /** First trick only, before playing: announce every combination held. */
+  | { type: 'declare' }
+  | { type: 'play'; cardId: CardId }
 
-export type RuleViolation = 'game_finished' | 'not_your_turn' | 'illegal_move' | 'seat_not_active'
+export type RuleViolation = 'game_finished' | 'not_your_turn' | 'illegal_move' | 'hand_over'
 
 export type Result<T, E> = { okay: true; value: T } | { okay: false; error: E }
-
 export const ok = <T>(value: T): Result<T, never> => ({ okay: true, value })
 export const err = <E>(error: E): Result<never, E> => ({ okay: false, error })

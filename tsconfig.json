@@ -12,7 +12,6 @@
     // typecheck never reads a stale dist/*.d.ts.
     "paths": {
       "@belote/engine": ["./packages/engine/src/index.ts"],
-      "@belote/game": ["./packages/game/src/index.ts"],
       "@belote/protocol": ["./packages/protocol/src/index.ts"]
     }
   },

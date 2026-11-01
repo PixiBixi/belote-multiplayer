@@ -15,7 +15,7 @@ export default tseslint.config(
     // The engine must stay deterministic: no source of entropy, no clock.
     // `Math.min`/`Math.imul` remain legitimate; only the random source is
     // banned - shuffling goes through rng.ts and its seed.
-    files: ['packages/engine/src/**', 'packages/game/src/**'],
+    files: ['packages/engine/src/**'],
     rules: {
       'no-restricted-properties': [
         'error',
