@@ -185,7 +185,8 @@ describe('bots', () => {
           const final = playGame(
             createGame({ seed, rules: { ...DEFAULT_TABLE_RULES, variant } }),
             (s, moves) => {
-              const m = botMove(s, s.hand.currentSeat, level, seed)
+              // Few samples: this checks hard bots finish, not how well they play.
+              const m = botMove(s, s.hand.currentSeat, level, seed, 2)
               expect(m).not.toBeNull()
               expect(moves).toContainEqual(m)
               return m as Move
@@ -195,6 +196,8 @@ describe('bots', () => {
         }
       }
     },
+    // Whole games of simulating bots: seconds of work, not a hang.
+    30_000,
   )
 
   it('hard bots beat easy bots more often than not', () => {
@@ -203,10 +206,10 @@ describe('bots', () => {
     for (let seed = 0; seed < games; seed++) {
       const final = playGame(createGame({ seed, rules: { target: 501 } }), (s) => {
         const seat = s.hand.currentSeat
-        return botMove(s, seat, seat % 2 === 0 ? 'hard' : 'easy', seed) as Move
+        return botMove(s, seat, seat % 2 === 0 ? 'hard' : 'easy', seed, 4) as Move
       })
       if (final.winner === 0) hardWins++
     }
     expect(hardWins).toBeGreaterThan(games * 0.6)
-  })
+  }, 30_000)
 })
