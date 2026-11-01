@@ -1,6 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const PORT = 5099
+/* 5050 can be taken locally (OrbStack) and Chrome blocks 5060: let the port move. */
+const PORT = Number(process.env['E2E_PORT'] ?? 5050)
+
+/* Installed Chrome locally, bundled chromium in CI. E2E_CHANNEL overrides; empty = bundled. */
+const channel = process.env['E2E_CHANNEL'] ?? (process.env['CI'] === undefined ? 'chrome' : '')
 
 /**
  * Point the suite at an already-running instance - a container, a staging box -
@@ -25,16 +29,8 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        permissions: ['microphone'],
-        launchOptions: {
-          /* Without a fake device, getUserMedia has nothing to return in CI and
-             every voice assertion fails for a reason unrelated to the code. */
-          args: [
-            '--use-fake-device-for-media-stream',
-            '--use-fake-ui-for-media-stream',
-            '--autoplay-policy=no-user-gesture-required',
-          ],
-        },
+        locale: 'fr-FR',
+        ...(channel === '' ? {} : { channel }),
       },
     },
   ],
@@ -58,10 +54,6 @@ export default defineConfig({
             // exercised by the server's own integration tests.
             MOVE_BURST: '5000',
             MOVE_PER_SECOND: '5000',
-            // The chat-overflow test posts dozens of lines in a second, which a
-            // budget sized for a person would rightly throttle.
-            CHAT_BURST: '5000',
-            CHAT_PER_SECOND: '5000',
           },
         },
       }
