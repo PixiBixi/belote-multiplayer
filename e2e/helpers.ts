@@ -31,6 +31,10 @@ export async function joinTable(page: Page, code: string, name: string): Promise
 export async function playSolo(page: Page, name: string): Promise<void> {
   await enterName(page, name)
   await page.getByRole('button', { name: /Jouer contre l’ordinateur/ }).click()
+  // Solo stops in the lobby with three bots seated, so the rules can be set first.
+  await expect(page.locator('.lobby-seat.mine')).toBeVisible()
+  await expect(page.locator('.lobby-seat .seat-empty')).toHaveCount(0)
+  await page.locator('.lobby-actions .btn-primary:not([disabled])').click()
   await expect(page.locator('.hand-fan')).toBeVisible()
 }
 
