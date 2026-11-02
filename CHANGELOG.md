@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.1](https://github.com/PixiBixi/belote-multiplayer/compare/337b8cc393419f17b4784a4f0823587db4fdb925..v1.1.1) - 2026-11-02
+#### Miscellaneous Chores
+- (**deps**) update github-actions (#3) - ([337b8cc](https://github.com/PixiBixi/belote-multiplayer/commit/337b8cc393419f17b4784a4f0823587db4fdb925)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.0](https://github.com/PixiBixi/belote-multiplayer/compare/d8d385b66e5e7f36e56c6e87daff070b8f3e1067..v1.1.0) - 2026-11-01
 #### Features
 - (**engine**) hard bots play by Monte Carlo over the hidden hands - ([7dc4e10](https://github.com/PixiBixi/belote-multiplayer/commit/7dc4e104b9282c6aa02289de8e1ec284e0ae29ac)) - PixiBixi
