@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.5](https://github.com/PixiBixi/belote-multiplayer/compare/a650d1cd6008fe906cd88725d120650a96bcaf71..v1.1.5) - 2026-11-04
+#### Miscellaneous Chores
+- (**deps**) update dependency eslint to v10.14.0 (#7) - ([a650d1c](https://github.com/PixiBixi/belote-multiplayer/commit/a650d1cd6008fe906cd88725d120650a96bcaf71)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.4](https://github.com/PixiBixi/belote-multiplayer/compare/62b963a624ac635933bf2d7428bfc111bb7594b6..v1.1.4) - 2026-11-03
 #### Miscellaneous Chores
 - (**deps**) update node.js to c6ad9e9 (#6) - ([62b963a](https://github.com/PixiBixi/belote-multiplayer/commit/62b963a624ac635933bf2d7428bfc111bb7594b6)) - renovate[bot], renovate[bot]
