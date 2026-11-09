@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.9](https://github.com/PixiBixi/belote-multiplayer/compare/e05e8f79a7c360f1105e6a0e78cad523f8c22b6d..v1.1.9) - 2026-11-09
+#### Miscellaneous Chores
+- (**deps**) lock file maintenance (#12) - ([e05e8f7](https://github.com/PixiBixi/belote-multiplayer/commit/e05e8f79a7c360f1105e6a0e78cad523f8c22b6d)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.8](https://github.com/PixiBixi/belote-multiplayer/compare/e7215a9b712dfce4b8679b3419952657f619d46e..v1.1.8) - 2026-11-08
 #### Miscellaneous Chores
 - (**deps**) update zizmorcore/zizmor-action action to v0.8.1 (#11) - ([e7215a9](https://github.com/PixiBixi/belote-multiplayer/commit/e7215a9b712dfce4b8679b3419952657f619d46e)) - renovate[bot], renovate[bot]
