@@ -8,7 +8,8 @@ import type {
   TableRules,
   Team,
 } from '@belote/engine'
-import type { LobbyView, MatchPace, PlayerView } from './views.js'
+import type { LobbyView, MatchPace } from './views.js'
+import type { ViewUpdate } from './view-update.js'
 
 export type ErrorCode =
   | 'room_not_found'
@@ -103,7 +104,7 @@ export type ClientToServer = {
 
 export type ServerToClient = {
   'room:state': (view: LobbyView) => void
-  'game:view': (view: PlayerView) => void
+  'game:view': (view: ViewUpdate) => void
   'game:event': (event: GameEvent) => void
   'chat:message': (message: { seat: number; name: string; text: string }) => void
   'voice:peers': (peers: VoicePeer[]) => void

@@ -1,6 +1,14 @@
-import { applyMove, createGame, legalMoves, type GameState, type Move } from '@belote/engine'
+import {
+  applyMove,
+  createGame,
+  legalMoves,
+  nextHand,
+  type GameState,
+  type Move,
+} from '@belote/engine'
 import { describe, expect, it } from 'vitest'
 import { buildPlayerView } from './build-view.js'
+import { applyViewUpdate, toViewUpdate } from './view-update.js'
 import { gameMoveSchema, roomCreateSchema, tableRulesSchema } from './schemas.js'
 import type { SeatInfo } from './views.js'
 
@@ -90,5 +98,47 @@ describe('schemas', () => {
     expect(roomCreateSchema.parse({ playerName: ' Ana ', pace: null }).rules.variant).toBe(
       'classic',
     )
+  })
+})
+
+describe('view updates', () => {
+  /** A game two hands in, so its history holds two results. */
+  const twoHandsPlayed = (): GameState => {
+    let s = createGame({ seed: 7, rules: { declarations: false } })
+    for (let hands = 0; hands < 2; hands++) {
+      s = step(s, { type: 'take', trump: s.hand.turned?.suit ?? 'S' })
+      while (s.hand.phase === 'playing') s = step(s, legalMoves(s, s.hand.currentSeat)[0] as Move)
+      if (hands === 0) s = nextHand(s, 100 + hands)
+    }
+    return s
+  }
+
+  it('sends the whole history to a socket that holds none', () => {
+    const view = buildPlayerView(twoHandsPlayed(), 0, seats, timing)
+    expect(view.history).toHaveLength(2)
+    const update = toViewUpdate(view, 0)
+    expect(update.history).toEqual(view.history)
+    expect(update.historyFrom ?? 0).toBe(0)
+    expect(applyViewUpdate(update, null)).toEqual(view)
+  })
+
+  it('sends only the entries the socket has not seen', () => {
+    const view = buildPlayerView(twoHandsPlayed(), 0, seats, timing)
+    const known = { ...view, history: view.history.slice(0, 1) }
+    const update = toViewUpdate(view, 1)
+    expect(update.history).toEqual(view.history.slice(1))
+    expect(update.historyFrom).toBe(1)
+    expect(applyViewUpdate(update, known)).toEqual(view)
+    expect(toViewUpdate(view, 2).history).toEqual([])
+    expect(applyViewUpdate(toViewUpdate(view, 2), view)).toEqual(view)
+  })
+
+  it('starts over when the history is shorter than what was sent, as after a restart', () => {
+    const fresh = buildPlayerView(createGame({ seed: 3 }), 0, seats, timing)
+    const update = toViewUpdate(fresh, 2)
+    expect(update.historyFrom ?? 0).toBe(0)
+    expect(
+      applyViewUpdate(update, buildPlayerView(twoHandsPlayed(), 0, seats, timing)).history,
+    ).toEqual([])
   })
 })

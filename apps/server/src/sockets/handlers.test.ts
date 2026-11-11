@@ -1,5 +1,5 @@
 import { createServer, type Server as HttpServer } from 'node:http'
-import type { GameEvent, LobbyView, PlayerView } from '@belote/protocol'
+import type { GameEvent, LobbyView, PlayerView, ViewUpdate } from '@belote/protocol'
 import { io as connect, type Socket } from 'socket.io-client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../config.js'
@@ -407,5 +407,42 @@ describe('views for bot seats', () => {
     expect(seats).not.toContain(1)
     expect(seats).not.toContain(2)
     expect(seats).not.toContain(3)
+  })
+})
+
+describe('the hand history on the wire', () => {
+  it('sends the finished hands once, then only what is new', async () => {
+    const host = newPlayer()
+    const ack = await emit<CreateAck>(host, 'room:create', {
+      playerName: 'Ana',
+      pace: { turnSeconds: 10 },
+      rules: {},
+    })
+    if (!ack.ok) throw new Error('room:create failed')
+    for (const seat of [1, 2, 3]) {
+      await emit<PlainAck>(host, 'room:setSeat', {
+        seat,
+        occupant: { kind: 'bot', level: 'normal' },
+      })
+    }
+    expect(await emit<PlainAck>(host, 'game:start', {})).toEqual({ ok: true })
+
+    // The clock plays every turn, so firing timers runs hands to the end and deals the next.
+    const wire = (): ViewUpdate[] => host.views
+    for (let i = 0; i < 2000 && !wire().some((v) => v.historyFrom === 1); i++) {
+      const count = host.views.length
+      fireTimers()
+      await until(() => host.views.length > count, 'the next view')
+    }
+
+    const updates = wire()
+    const first = updates.findIndex((v) => v.history.length === 1 && (v.historyFrom ?? 0) === 0)
+    expect(first).toBeGreaterThan(-1)
+    // Once sent, a result is never sent again to this socket.
+    for (const update of updates.slice(first + 1)) {
+      expect(update.historyFrom).toBe(1)
+      expect(update.history).toEqual([])
+    }
+    expect(updates.slice(0, first).every((v) => v.history.length === 0)).toBe(true)
   })
 })

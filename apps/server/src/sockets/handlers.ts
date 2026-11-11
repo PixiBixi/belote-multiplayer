@@ -9,6 +9,7 @@ import {
   roomMoveSeatSchema,
   roomRejoinSchema,
   roomSetSeatSchema,
+  toViewUpdate,
   type ErrorCode,
   type GameEvent,
 } from '@belote/protocol'
@@ -100,6 +101,8 @@ export function registerSocketHandlers(
   })
 
   const presences = new Map<string, Presence>()
+  /** How many finished hands each socket was sent: the history goes out once, then deltas. */
+  const historySent = new Map<string, number>()
   const moveLimiter = createRateLimiter({
     capacity: config.moveBurst,
     refillPerSecond: config.movePerSecond,
@@ -162,7 +165,8 @@ export function registerSocketHandlers(
       if (socketId === null) continue
       const view = room.viewFor(seat)
       if (view === null) continue
-      io.to(socketId).emit('game:view', view)
+      io.to(socketId).emit('game:view', toViewUpdate(view, historySent.get(socketId) ?? 0))
+      historySent.set(socketId, view.history.length)
     }
   }
 
@@ -219,6 +223,7 @@ export function registerSocketHandlers(
     const { room } = presence
     const result = room.leave(socket.id)
     presences.delete(socket.id)
+    historySent.delete(socket.id)
     moveLimiter.forget(socket.id)
     chatLimiter.forget(socket.id)
     void socket.leave(room.code)
@@ -235,6 +240,7 @@ export function registerSocketHandlers(
     // Before `presences.delete`: leaveVoice resolves the room through it.
     if (stale !== undefined) leaveVoice(voiceContext, stale)
     presences.delete(socketId)
+    historySent.delete(socketId)
     moveLimiter.forget(socketId)
     chatLimiter.forget(socketId)
     stale?.disconnect(true)
@@ -529,6 +535,7 @@ export function registerSocketHandlers(
         controlLimiter.forget(socket.id)
         const presence = presences.get(socket.id)
         presences.delete(socket.id)
+        historySent.delete(socket.id)
         if (presence === undefined) return
 
         const { room } = presence
