@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.10](https://github.com/PixiBixi/belote-multiplayer/compare/320502415a3e5400d7dda53033891b626f5ae277..v1.1.10) - 2026-11-11
+#### Miscellaneous Chores
+- (**deps**) update docker/login-action action to v4.8.0 (#13) - ([3205024](https://github.com/PixiBixi/belote-multiplayer/commit/320502415a3e5400d7dda53033891b626f5ae277)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.9](https://github.com/PixiBixi/belote-multiplayer/compare/e05e8f79a7c360f1105e6a0e78cad523f8c22b6d..v1.1.9) - 2026-11-09
 #### Miscellaneous Chores
 - (**deps**) lock file maintenance (#12) - ([e05e8f7](https://github.com/PixiBixi/belote-multiplayer/commit/e05e8f79a7c360f1105e6a0e78cad523f8c22b6d)) - renovate[bot], renovate[bot]
