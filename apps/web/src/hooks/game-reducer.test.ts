@@ -1,4 +1,4 @@
-import type { PlayerView } from '@belote/protocol'
+import { toViewUpdate, type PlayerView } from '@belote/protocol'
 import { describe, expect, it } from 'vitest'
 import { CATALOGUES, type Messages } from '../i18n/index.js'
 import { SEATS, doneGame, lobbyView, viewOf } from '../test-fixtures.js'
@@ -42,6 +42,20 @@ describe('gameReducer', () => {
     const next = onTable()
     expect(next.screen).toBe('table')
     expect(next.view).toBe(view)
+  })
+
+  it('rebuilds the history from updates that only carry what is new', () => {
+    const result = view.history[0]
+    if (result === undefined) throw new Error('the fixture game has a finished hand')
+    const two = { ...view, history: [result, result] }
+    // The first update carries everything, the next one only the second result.
+    const first = gameReducer(joined(), {
+      type: 'view',
+      view: toViewUpdate({ ...two, history: [result] }, 0),
+    })
+    const second = gameReducer(first, { type: 'view', view: toViewUpdate(two, 1) })
+    expect(second.view?.history).toEqual([result, result])
+    expect(second.view?.seats).toEqual(two.seats)
   })
 
   it('follows a seat change without leaving the lobby', () => {

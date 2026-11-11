@@ -1,5 +1,11 @@
-import { randomInt } from 'node:crypto'
-import { DEFAULT_TABLE_RULES, err, ok, type Result, type TableRules } from '@belote/engine'
+import {
+  DEFAULT_TABLE_RULES,
+  err,
+  ok,
+  type DeckSeed,
+  type Result,
+  type TableRules,
+} from '@belote/engine'
 import {
   BETWEEN_HANDS_SECONDS,
   BOT_DELAY_MS,
@@ -8,6 +14,7 @@ import {
   type GameEvent,
   type MatchPace,
 } from '@belote/protocol'
+import { randomDealSeed } from './deal-seed.js'
 import { generateRoomCode } from './room-code.js'
 import { Room } from './room.js'
 
@@ -18,9 +25,11 @@ export type Timers = {
 
 type RoomManagerOptions = {
   maxRooms: number
+  /** Rooms one owner (a client IP) may hold at once. Unlimited when omitted. */
+  maxRoomsPerOwner?: number
   gracePeriodMs: number
   timers?: Timers
-  seedSource?: () => number
+  seedSource?: () => DeckSeed
   /** Injectable for the same reason the timers are: tests must not wait. */
   now?: () => number
 }
@@ -50,16 +59,21 @@ export class RoomManager {
   /** Told the code of each purged room, so the socket layer can drop what it keeps per room. */
   private readonly purgeListeners: ((code: string, room: Room) => void)[] = []
   private readonly maxRooms: number
+  private readonly maxRoomsPerOwner: number
+  /** Who created each room, and how many each owner holds, until the room is dropped. */
+  private readonly ownerOf = new Map<string, string>()
+  private readonly ownedCount = new Map<string, number>()
   private readonly gracePeriodMs: number
   private readonly timers: Timers
-  private readonly seedSource: () => number
+  private readonly seedSource: () => DeckSeed
   private readonly now: () => number
 
   constructor(options: RoomManagerOptions) {
     this.maxRooms = options.maxRooms
+    this.maxRoomsPerOwner = options.maxRoomsPerOwner ?? Number.POSITIVE_INFINITY
     this.gracePeriodMs = options.gracePeriodMs
     this.timers = options.timers ?? defaultTimers
-    this.seedSource = options.seedSource ?? (() => randomInt(2 ** 31 - 1))
+    this.seedSource = options.seedSource ?? randomDealSeed
     this.now = options.now ?? (() => Date.now())
   }
 
@@ -67,8 +81,14 @@ export class RoomManager {
     return this.rooms.size
   }
 
-  create(pace: MatchPace = null, rules: TableRules = DEFAULT_TABLE_RULES): Result<Room, ErrorCode> {
+  create(
+    pace: MatchPace = null,
+    rules: TableRules = DEFAULT_TABLE_RULES,
+    owner: string | null = null,
+  ): Result<Room, ErrorCode> {
     if (this.rooms.size >= this.maxRooms) return err('server_full')
+    const owned = owner === null ? 0 : (this.ownedCount.get(owner) ?? 0)
+    if (owned >= this.maxRoomsPerOwner) return err('rate_limited')
 
     // Retry on the astronomically unlikely collision rather than overwrite.
     let code = generateRoomCode()
@@ -79,11 +99,15 @@ export class RoomManager {
 
     const room = new Room(code, pace, rules)
     this.rooms.set(code, room)
+    if (owner !== null) {
+      this.ownerOf.set(code, owner)
+      this.ownedCount.set(owner, owned + 1)
+    }
     return ok(room)
   }
 
   /** The seed source, so a start or restart can draw one without owning randomness. */
-  nextSeed(): number {
+  nextSeed(): DeckSeed {
     return this.seedSource()
   }
 
@@ -171,7 +195,7 @@ export class RoomManager {
       case 'hand':
         ms = BETWEEN_HANDS_SECONDS * 1000
         room.setNextHandDeadline(this.now() + ms)
-        run = () => room.dealNextHandAutomatically()
+        run = () => room.dealNextHandAutomatically(this.nextSeed())
         break
     }
     const handle = this.timers.setTimeout(refire(run), ms)
@@ -195,11 +219,22 @@ export class RoomManager {
     return true
   }
 
+  /** Gives a dropped room back to its owner's allowance; the count is removed at zero. */
+  private releaseOwner(code: string): void {
+    const owner = this.ownerOf.get(code)
+    if (owner === undefined) return
+    this.ownerOf.delete(code)
+    const left = (this.ownedCount.get(owner) ?? 1) - 1
+    if (left > 0) this.ownedCount.set(owner, left)
+    else this.ownedCount.delete(owner)
+  }
+
   private drop(room: Room): void {
     for (let seat = 0; seat < room.seatCount; seat++) this.cancelGrace(room, seat)
     this.cancelAuto(room)
     this.rooms.delete(room.code)
     this.emptySince.delete(room.code)
+    this.releaseOwner(room.code)
     for (const listener of this.purgeListeners) listener(room.code, room)
   }
 

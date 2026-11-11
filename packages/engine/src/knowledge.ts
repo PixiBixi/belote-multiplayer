@@ -1,5 +1,5 @@
 import { buildDeck, strength, winningIndex } from './cards.js'
-import { nextInt, shuffle } from './rng.js'
+import { nextDeckInt, shuffle, type DeckState } from './rng.js'
 import { SEATS, teamOf, type Card, type GameState, type Suit, type Trump } from './types.js'
 
 /** What one seat can know about the cards: never more than its own view shows. */
@@ -62,9 +62,9 @@ export function isMaster(card: Card, trump: Trump, k: Knowledge): boolean {
 export function sampleHands(
   state: GameState,
   k: Knowledge,
-  rngState: number,
+  rngState: DeckState,
   attempts = 20,
-): { hands: Card[][]; rngState: number } | null {
+): { hands: Card[][]; rngState: DeckState } | null {
   const need = state.hand.hands.map((h, s) => (s === k.seat ? 0 : h.length))
   if (need.reduce((a, b) => a + b, 0) !== k.unseen.length) return null
   let rng = rngState
@@ -85,7 +85,7 @@ export function sampleHands(
     for (const card of order) {
       const open = eligible(card).filter((s) => (left[s] ?? 0) > 0)
       // Weighted by the room left, so no seat is favoured by its index.
-      const pick = nextInt(
+      const pick = nextDeckInt(
         rng,
         open.reduce((sum, s) => sum + (left[s] ?? 0), 0),
       )

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { botMove } from './bot.js'
 import { applyMove, createGame, nextHand } from './game.js'
 import { knowledgeFor, sampleHands } from './knowledge.js'
+import { deckState } from './rng.js'
 import { DEFAULT_TABLE_RULES, type GameState, type TableRules } from './types.js'
 
 /** Every state a normal-bot game goes through while cards are being played. */
@@ -10,7 +11,7 @@ function playingStates(seed: number, rules: Partial<TableRules>): GameState[] {
   const states: GameState[] = []
   for (let turn = 0; turn < 5000 && state.phase !== 'finished'; turn++) {
     if (state.hand.phase === 'done') {
-      state = nextHand(state)
+      state = nextHand(state, state.handNumber)
       continue
     }
     if (state.hand.phase === 'playing') states.push(state)
@@ -51,7 +52,7 @@ describe('sampleHands', () => {
     for (const state of playingStates(1, rules)) {
       const seat = state.hand.currentSeat
       const k = knowledgeFor(state, seat)
-      const sample = sampleHands(state, k, 99)
+      const sample = sampleHands(state, k, deckState(99))
       expect(sample).not.toBeNull()
       const hands = sample?.hands ?? []
       expect(hands[seat]).toEqual(state.hand.hands[seat])
@@ -68,8 +69,10 @@ describe('sampleHands', () => {
   it('is deterministic for a given random state, and varies with it', () => {
     const state = playingStates(2, {})[0] as GameState
     const k = knowledgeFor(state, state.hand.currentSeat)
-    expect(sampleHands(state, k, 5)).toEqual(sampleHands(state, k, 5))
-    expect(sampleHands(state, k, 5)?.hands).not.toEqual(sampleHands(state, k, 6)?.hands)
+    expect(sampleHands(state, k, deckState(5))).toEqual(sampleHands(state, k, deckState(5)))
+    expect(sampleHands(state, k, deckState(5))?.hands).not.toEqual(
+      sampleHands(state, k, deckState(6))?.hands,
+    )
   })
 })
 

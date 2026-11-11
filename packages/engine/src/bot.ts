@@ -1,7 +1,7 @@
 import { beats, cardPoints, isTrumpCard, strength, winningIndex } from './cards.js'
 import { applyMove, legalMoves } from './game.js'
 import { isMaster, knowledgeFor, sampleHands, type Knowledge } from './knowledge.js'
-import { nextInt } from './rng.js'
+import { deckState, foldDeckState, nextInt } from './rng.js'
 import {
   SUITS,
   teamOf,
@@ -37,7 +37,9 @@ export function botMove(
     if (declare) return declare
     const plays = state.hand.phase === 'bidding' ? biddingFallback(moves, state, seat) : moves
     return (
-      plays[nextInt(state.rngState ^ (salt * 2654435761), plays.length).value] ?? moves[0] ?? null
+      plays[nextInt(foldDeckState(state.rngState) ^ (salt * 2654435761), plays.length).value] ??
+      moves[0] ??
+      null
     )
   }
   if (state.hand.phase === 'bidding') return chooseBid(state, seat, moves, level)
@@ -302,7 +304,7 @@ function monteCarloPlay(
   const k: Knowledge = knowledgeFor(state, seat)
   const team = teamOf(seat)
   const totals = moves.map(() => 0)
-  let rng = (state.rngState ^ Math.imul(salt + 1, 2654435761)) | 0
+  let rng = deckState((foldDeckState(state.rngState) ^ Math.imul(salt + 1, 2654435761)) | 0)
   let deals = 0
   for (let i = 0; i < samples; i++) {
     const sample = sampleHands(state, k, rng)

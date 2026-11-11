@@ -30,7 +30,7 @@ function playGame(
   for (let turn = 0; turn < 20000; turn++) {
     if (state.phase === 'finished') return state
     if (state.hand.phase === 'done') {
-      state = nextHand(state)
+      state = nextHand(state, state.handNumber)
       continue
     }
     const moves = legalMoves(state, state.hand.currentSeat)
@@ -102,7 +102,16 @@ describe('bidding', () => {
     expect(s.hand.phase).toBe('done')
     expect(s.hand.result?.kind).toBe('redeal')
     const dealer = s.hand.dealer
-    expect(nextHand(s).hand.dealer).toBe((dealer + 1) % 4)
+    expect(nextHand(s, 1).hand.dealer).toBe((dealer + 1) % 4)
+  })
+
+  it('deals every hand from the seed it is given, never from the stream of the last one', () => {
+    let s = createGame({ seed: 7, rules: { vache: false } })
+    for (let i = 0; i < 8; i++) s = step(s, { type: 'pass' })
+    const seed = [1, 2, 3, 4] as const
+    const other = { ...s, rngState: [9, 9, 9, 9] as const }
+    expect(nextHand(s, seed).hand.hands).toEqual(nextHand(other, seed).hand.hands)
+    expect(nextHand(s, seed).hand.hands).not.toEqual(nextHand(s, [1, 2, 3, 5]).hand.hands)
   })
 
   it('classic: round one only offers the turned suit, round two the others', () => {

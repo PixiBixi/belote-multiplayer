@@ -1,7 +1,7 @@
 import { createServer, type Server as HttpServer } from 'node:http'
-import type { GameEvent, LobbyView, PlayerView } from '@belote/protocol'
+import type { GameEvent, LobbyView, PlayerView, ViewUpdate } from '@belote/protocol'
 import { io as connect, type Socket } from 'socket.io-client'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../config.js'
 import { RoomManager, type Timers } from '../rooms/room-manager.js'
 import { registerSocketHandlers } from './handlers.js'
@@ -384,5 +384,65 @@ describe('hand flow over the wire', () => {
     await emit<PlainAck>(host, 'chat:send', { text: 'belote !' })
     await until(() => heard.length > 0, 'the chat message')
     expect(heard).toEqual(['Ana:belote !'])
+  })
+})
+
+describe('views for bot seats', () => {
+  it('builds no view for a seat nobody is connected to', async () => {
+    const host = newPlayer()
+    const created = await createRoom(host)
+    for (const seat of [1, 2, 3]) {
+      await emit<PlainAck>(host, 'room:setSeat', {
+        seat,
+        occupant: { kind: 'bot', level: 'normal' },
+      })
+    }
+    const room = rooms.get(created.roomCode)
+    if (room === null) throw new Error('expected the room')
+    const views = vi.spyOn(room, 'viewFor')
+
+    expect(await emit<PlainAck>(host, 'game:start', {})).toEqual({ ok: true })
+    const seats = views.mock.calls.map(([seat]) => seat)
+    expect(seats).toContain(0)
+    expect(seats).not.toContain(1)
+    expect(seats).not.toContain(2)
+    expect(seats).not.toContain(3)
+  })
+})
+
+describe('the hand history on the wire', () => {
+  it('sends the finished hands once, then only what is new', async () => {
+    const host = newPlayer()
+    const ack = await emit<CreateAck>(host, 'room:create', {
+      playerName: 'Ana',
+      pace: { turnSeconds: 10 },
+      rules: {},
+    })
+    if (!ack.ok) throw new Error('room:create failed')
+    for (const seat of [1, 2, 3]) {
+      await emit<PlainAck>(host, 'room:setSeat', {
+        seat,
+        occupant: { kind: 'bot', level: 'normal' },
+      })
+    }
+    expect(await emit<PlainAck>(host, 'game:start', {})).toEqual({ ok: true })
+
+    // The clock plays every turn, so firing timers runs hands to the end and deals the next.
+    const wire = (): ViewUpdate[] => host.views
+    for (let i = 0; i < 2000 && !wire().some((v) => v.historyFrom === 1); i++) {
+      const count = host.views.length
+      fireTimers()
+      await until(() => host.views.length > count, 'the next view')
+    }
+
+    const updates = wire()
+    const first = updates.findIndex((v) => v.history.length === 1 && (v.historyFrom ?? 0) === 0)
+    expect(first).toBeGreaterThan(-1)
+    // Once sent, a result is never sent again to this socket.
+    for (const update of updates.slice(first + 1)) {
+      expect(update.historyFrom).toBe(1)
+      expect(update.history).toEqual([])
+    }
+    expect(updates.slice(0, first).every((v) => v.history.length === 0)).toBe(true)
   })
 })

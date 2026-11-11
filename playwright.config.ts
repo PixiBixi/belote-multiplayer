@@ -60,6 +60,14 @@ export default defineConfig({
             // exercised by the server's own integration tests.
             MOVE_BURST: '5000',
             MOVE_PER_SECOND: '5000',
+            // Every browser shares 127.0.0.1, and those limits are per client IP.
+            CREATE_BURST: '5000',
+            CREATE_PER_SECOND: '5000',
+            JOIN_BURST: '5000',
+            JOIN_PER_SECOND: '5000',
+            VOICE_CONTROL_BURST: '5000',
+            VOICE_CONTROL_PER_SECOND: '5000',
+            MAX_ROOMS_PER_IP: '5000',
           },
         },
       }

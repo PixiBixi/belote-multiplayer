@@ -1,4 +1,10 @@
-import type { GameEvent, LobbyView, PlayerView } from '@belote/protocol'
+import {
+  applyViewUpdate,
+  type GameEvent,
+  type LobbyView,
+  type PlayerView,
+  type ViewUpdate,
+} from '@belote/protocol'
 import type { Messages } from '../i18n/messages.js'
 
 /** A long game produces hundreds of events. The feed is a view, not a log. */
@@ -36,7 +42,7 @@ export type Action =
   | { type: 'joined'; roomCode: string; seat: number }
   | { type: 'seat'; seat: number }
   | { type: 'lobby'; lobby: LobbyView }
-  | { type: 'view'; view: PlayerView }
+  | { type: 'view'; view: ViewUpdate }
   | { type: 'event'; event: GameEvent }
   | { type: 'chat'; message: { seat: number; name: string; text: string } }
   | { type: 'error'; message: string }
@@ -115,7 +121,13 @@ export function gameReducer(state: ClientState, action: Action, messages: Messag
       return { ...state, lobby: action.lobby }
 
     case 'view':
-      return { ...state, screen: 'table', view: action.view, error: null }
+      // The history only arrives past what this client holds: join it to the previous view.
+      return {
+        ...state,
+        screen: 'table',
+        view: applyViewUpdate(action.view, state.view),
+        error: null,
+      }
 
     case 'chat':
       return withFeed(state, { kind: 'chat', ...action.message })

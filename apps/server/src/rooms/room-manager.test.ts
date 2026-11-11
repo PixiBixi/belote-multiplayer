@@ -39,11 +39,13 @@ const manualTimers = () => {
 const managerWith = (overrides: { maxRooms?: number } = {}) => {
   const clock = manualTimers()
   const time = { now: 1_000_000 }
+  // The first deal keeps seed 42; every later one gets its own, as the crypto source gives.
+  let seed = 41
   const manager = new RoomManager({
     maxRooms: overrides.maxRooms ?? 10,
     gracePeriodMs: 60_000,
     timers: clock.timers,
-    seedSource: () => 42,
+    seedSource: () => ++seed,
     now: () => time.now,
   })
   return { manager, clock, time }
@@ -108,6 +110,32 @@ describe('RoomManager.create', () => {
     expect(manager.create(null).okay).toBe(true)
     expect(manager.create(null).okay).toBe(true)
     expect(manager.create(null)).toEqual({ okay: false, error: 'server_full' })
+  })
+
+  it('caps the rooms one client holds, so one address cannot fill the server', () => {
+    const manager = new RoomManager({ maxRooms: 10, maxRoomsPerOwner: 2, gracePeriodMs: 0 })
+    const create = (owner: string) => manager.create(null, undefined, owner)
+    expect(create('203.0.113.7').okay).toBe(true)
+    expect(create('203.0.113.7').okay).toBe(true)
+    expect(create('203.0.113.7')).toEqual({ okay: false, error: 'rate_limited' })
+    expect(create('198.51.100.1').okay).toBe(true)
+  })
+
+  it('gives a client its allowance back when its rooms are purged', () => {
+    const manager = new RoomManager({ maxRooms: 10, maxRoomsPerOwner: 1, gracePeriodMs: 0 })
+    const create = () => manager.create(null, undefined, '203.0.113.7')
+    expect(create().okay).toBe(true)
+    expect(create().okay).toBe(false)
+    expect(manager.purge()).toBe(1)
+    expect(create().okay).toBe(true)
+  })
+
+  it('gives the allowance back when an abandoned room is dropped too', () => {
+    const manager = new RoomManager({ maxRooms: 10, maxRoomsPerOwner: 1, gracePeriodMs: 0 })
+    const created = manager.create(null, undefined, '203.0.113.7')
+    if (!created.okay) throw new Error(created.error)
+    expect(manager.dropIfAbandoned(created.value)).toBe(true)
+    expect(manager.create(null, undefined, '203.0.113.7').okay).toBe(true)
   })
 })
 
@@ -217,11 +245,11 @@ describe('bots', () => {
   it('lets a human skip the wait with nextHand, and refuses it mid-hand', () => {
     const { manager, clock } = managerWith()
     const { room } = startedTable(manager, { turnSeconds: 10 })
-    expect(room.nextHand(0)).toEqual({ okay: false, error: 'hand_in_progress' })
+    expect(room.nextHand(0, manager.nextSeed())).toEqual({ okay: false, error: 'hand_in_progress' })
     manager.schedule(room, () => undefined)
     for (let i = 0; i < 2000 && room.automation().kind !== 'hand'; i++) clock.fireAll()
     expect(room.automation().kind).toBe('hand')
-    const dealt = room.nextHand(0)
+    const dealt = room.nextHand(0, manager.nextSeed())
     expect(dealt.okay && dealt.value[0]).toMatchObject({ type: 'handStarted', number: 2 })
   })
 })
@@ -307,12 +335,14 @@ describe('game record', () => {
     const { room } = startedTable(manager)
     room.leave('socket-0')
     for (let i = 0; i < 20000 && !room.gameFinished; i++) {
-      if (room.botStep().length === 0) room.dealNextHandAutomatically()
+      if (room.botStep().length === 0) room.dealNextHandAutomatically(manager.nextSeed())
     }
     expect(room.gameFinished).toBe(true)
 
     const record = room.gameRecord
-    expect(record?.steps).toContainEqual({ kind: 'nextHand' })
+    const dealSeeds = (record?.steps ?? []).flatMap((s) => (s.kind === 'nextHand' ? [s.seed] : []))
+    expect(dealSeeds.length).toBeGreaterThan(1)
+    expect(new Set(dealSeeds).size).toBe(dealSeeds.length)
     const replayed = record === null ? null : replay(record)
     expect(replayed?.okay && replayed.value.scores).toEqual(room.viewFor(1)?.scores)
     expect(replayed?.okay && replayed.value.phase).toBe('finished')
@@ -440,5 +470,40 @@ describe('leave, disconnect, takeover and reclaim', () => {
     room.leave('socket-0')
     expect(room.hostSeat).toBe(1)
     expect(room.abandoned).toBe(false)
+  })
+})
+
+describe('one socket, one seat', () => {
+  const twoHumans = () => {
+    const { manager } = managerWith()
+    const room = createdRoom(manager)
+    const ana = room.join('Ana', 'socket-0')
+    const ben = room.join('Ben', 'socket-1')
+    if (!ana.okay || !ben.okay) throw new Error('join failed')
+    for (const seat of [2, 3]) room.setSeat(0, seat, { kind: 'bot', level: 'normal' })
+    const started = room.start(0, manager.nextSeed())
+    if (!started.okay) throw new Error(started.error)
+    return { room, anaToken: ana.value.sessionToken, benToken: ben.value.sessionToken }
+  }
+
+  it('refuses a mid-game join by name from a socket that already holds a seat', () => {
+    const { room } = twoHumans()
+    room.disconnect('socket-0')
+    // socket-1 sits at seat 1 and asks for the absent Ana by name.
+    expect(room.join('Ana', 'socket-1')).toEqual({ okay: false, error: 'invalid_session' })
+    expect(room.seatOfSocket('socket-1')).toBe(1)
+    expect(room.socketAt(0)).toBeNull()
+  })
+
+  it('refuses a rejoin with another seat token from a seated socket', () => {
+    const { room, anaToken } = twoHumans()
+    room.disconnect('socket-0')
+    expect(room.rejoin(anaToken, 'socket-1')).toEqual({ okay: false, error: 'invalid_session' })
+    expect(room.seatOfSocket('socket-1')).toBe(1)
+  })
+
+  it('still lets a socket rejoin the seat it already holds', () => {
+    const { room, benToken } = twoHumans()
+    expect(room.rejoin(benToken, 'socket-1').okay).toBe(true)
   })
 })

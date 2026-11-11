@@ -8,6 +8,7 @@ import {
   nextHand,
   ok,
   type BotLevel,
+  type DeckSeed,
   type GameRecord,
   type GameState,
   type Move,
@@ -83,6 +84,8 @@ export class Room {
   private game: GameState | null = null
   /** Every step since the deal, so a reported bug can be replayed exactly. */
   private record: GameRecord | null = null
+  /** The seed of the hand in play, kept so it can be replayed; never sent to a client. */
+  private currentDealSeed: DeckSeed | null = null
   private pace: MatchPace
   private rules: TableRules
   /* Held, never computed: RoomManager hands the deadlines in, so no clock is read here. */
@@ -157,6 +160,10 @@ export class Room {
 
   /** No human could ever come back: nobody sits here, or only bots (stand-ins included). */
   /** The current game as a replayable record, or null before the first deal. */
+  get dealSeed(): DeckSeed | null {
+    return this.currentDealSeed
+  }
+
   get gameRecord(): GameRecord | null {
     return this.record
   }
@@ -309,7 +316,7 @@ export class Room {
 
   /* ---------- game ---------- */
 
-  start(bySeat: number, seed: number): Result<GameEvent[], ErrorCode> {
+  start(bySeat: number, seed: DeckSeed): Result<GameEvent[], ErrorCode> {
     if (this.game !== null) return err('game_already_started')
     if (bySeat !== this.host) return err('not_host')
     if (!this.canStart) return err('seats_not_filled')
@@ -317,31 +324,32 @@ export class Room {
   }
 
   /** The hand is over and the table asked for the next one before the clock did. */
-  nextHand(bySeat: number): Result<GameEvent[], ErrorCode> {
+  nextHand(bySeat: number, seed: DeckSeed): Result<GameEvent[], ErrorCode> {
     if (this.game === null) return err('game_not_started')
     if (this.slots[bySeat]?.kind !== 'human') return err('invalid_payload')
     if (this.game.phase === 'finished') return err('game_over')
     if (this.game.hand.phase !== 'done') return err('hand_in_progress')
-    return ok(this.dealNextHand())
+    return ok(this.dealNextHand(seed))
   }
 
   /** The clock dealing the next hand: silent when there is nothing to deal any more. */
-  dealNextHandAutomatically(): GameEvent[] {
+  dealNextHandAutomatically(seed: DeckSeed): GameEvent[] {
     if (this.game === null || this.game.phase === 'finished') return []
     if (this.game.hand.phase !== 'done') return []
-    return this.dealNextHand()
+    return this.dealNextHand(seed)
   }
 
-  restart(bySeat: number, seed: number): Result<GameEvent[], ErrorCode> {
+  restart(bySeat: number, seed: DeckSeed): Result<GameEvent[], ErrorCode> {
     if (this.game === null) return err('game_not_started')
     if (bySeat !== this.host) return err('not_host')
     if (this.game.phase !== 'finished') return err('hand_in_progress')
     return ok(this.deal(seed, [{ type: 'gameRestarted' }]))
   }
 
-  private deal(seed: number, lead: GameEvent[]): GameEvent[] {
+  private deal(seed: DeckSeed, lead: GameEvent[]): GameEvent[] {
     this.game = createGame({ seed, rules: this.rules })
     this.record = { seed, rules: this.rules, steps: [] }
+    this.currentDealSeed = seed
     this.counter += 1
     this.completedTrick = false
     return [
@@ -350,10 +358,11 @@ export class Room {
     ]
   }
 
-  private dealNextHand(): GameEvent[] {
+  private dealNextHand(seed: DeckSeed): GameEvent[] {
     if (this.game === null) return []
-    this.game = nextHand(this.game)
-    this.record?.steps.push({ kind: 'nextHand' })
+    this.game = nextHand(this.game, seed)
+    this.record?.steps.push({ kind: 'nextHand', seed })
+    this.currentDealSeed = seed
     this.counter += 1
     this.completedTrick = false
     return [{ type: 'handStarted', number: this.game.handNumber, dealer: this.game.hand.dealer }]
@@ -449,6 +458,10 @@ export class Room {
     )
     const slot = this.slots[seat]
     if (slot === undefined || slot.kind === 'empty') return err('invalid_session')
+    /* One seat per socket: a second one would get both hands, and on disconnect only the
+       first would be marked, leaving the other active forever with a dead socket. */
+    const holding = this.seatOfSocket(socketId)
+    if (holding !== null && holding !== seat) return err('invalid_session')
 
     if (slot.kind === 'bot') {
       if (slot.standIn === null) return err('invalid_session')
