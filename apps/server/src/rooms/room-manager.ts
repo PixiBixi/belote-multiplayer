@@ -25,6 +25,8 @@ export type Timers = {
 
 type RoomManagerOptions = {
   maxRooms: number
+  /** Rooms one owner (a client IP) may hold at once. Unlimited when omitted. */
+  maxRoomsPerOwner?: number
   gracePeriodMs: number
   timers?: Timers
   seedSource?: () => DeckSeed
@@ -57,6 +59,10 @@ export class RoomManager {
   /** Told the code of each purged room, so the socket layer can drop what it keeps per room. */
   private readonly purgeListeners: ((code: string, room: Room) => void)[] = []
   private readonly maxRooms: number
+  private readonly maxRoomsPerOwner: number
+  /** Who created each room, and how many each owner holds, until the room is dropped. */
+  private readonly ownerOf = new Map<string, string>()
+  private readonly ownedCount = new Map<string, number>()
   private readonly gracePeriodMs: number
   private readonly timers: Timers
   private readonly seedSource: () => DeckSeed
@@ -64,6 +70,7 @@ export class RoomManager {
 
   constructor(options: RoomManagerOptions) {
     this.maxRooms = options.maxRooms
+    this.maxRoomsPerOwner = options.maxRoomsPerOwner ?? Number.POSITIVE_INFINITY
     this.gracePeriodMs = options.gracePeriodMs
     this.timers = options.timers ?? defaultTimers
     this.seedSource = options.seedSource ?? randomDealSeed
@@ -74,8 +81,14 @@ export class RoomManager {
     return this.rooms.size
   }
 
-  create(pace: MatchPace = null, rules: TableRules = DEFAULT_TABLE_RULES): Result<Room, ErrorCode> {
+  create(
+    pace: MatchPace = null,
+    rules: TableRules = DEFAULT_TABLE_RULES,
+    owner: string | null = null,
+  ): Result<Room, ErrorCode> {
     if (this.rooms.size >= this.maxRooms) return err('server_full')
+    const owned = owner === null ? 0 : (this.ownedCount.get(owner) ?? 0)
+    if (owned >= this.maxRoomsPerOwner) return err('rate_limited')
 
     // Retry on the astronomically unlikely collision rather than overwrite.
     let code = generateRoomCode()
@@ -86,6 +99,10 @@ export class RoomManager {
 
     const room = new Room(code, pace, rules)
     this.rooms.set(code, room)
+    if (owner !== null) {
+      this.ownerOf.set(code, owner)
+      this.ownedCount.set(owner, owned + 1)
+    }
     return ok(room)
   }
 
@@ -202,11 +219,22 @@ export class RoomManager {
     return true
   }
 
+  /** Gives a dropped room back to its owner's allowance; the count is removed at zero. */
+  private releaseOwner(code: string): void {
+    const owner = this.ownerOf.get(code)
+    if (owner === undefined) return
+    this.ownerOf.delete(code)
+    const left = (this.ownedCount.get(owner) ?? 1) - 1
+    if (left > 0) this.ownedCount.set(owner, left)
+    else this.ownedCount.delete(owner)
+  }
+
   private drop(room: Room): void {
     for (let seat = 0; seat < room.seatCount; seat++) this.cancelGrace(room, seat)
     this.cancelAuto(room)
     this.rooms.delete(room.code)
     this.emptySince.delete(room.code)
+    this.releaseOwner(room.code)
     for (const listener of this.purgeListeners) listener(room.code, room)
   }
 
