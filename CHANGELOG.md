@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.12](https://github.com/PixiBixi/belote-multiplayer/compare/517ce3aa13f2390849464f73b0e470837b334ea7..v1.1.12) - 2026-11-11
+#### Bug Fixes
+- hardening from the security and reliability review (#15) - ([517ce3a](https://github.com/PixiBixi/belote-multiplayer/commit/517ce3aa13f2390849464f73b0e470837b334ea7)) - Jérémy
+
+- - -
+
 ## [v1.1.11](https://github.com/PixiBixi/belote-multiplayer/compare/9a336691f809a8abb6b771bcd1cbc647a5c50314..v1.1.11) - 2026-11-11
 #### Miscellaneous Chores
 - (**deps**) update node.js to 8996bb5 (#8) - ([9a33669](https://github.com/PixiBixi/belote-multiplayer/commit/9a336691f809a8abb6b771bcd1cbc647a5c50314)) - renovate[bot], renovate[bot]
