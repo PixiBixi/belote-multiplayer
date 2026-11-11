@@ -39,11 +39,13 @@ const manualTimers = () => {
 const managerWith = (overrides: { maxRooms?: number } = {}) => {
   const clock = manualTimers()
   const time = { now: 1_000_000 }
+  // The first deal keeps seed 42; every later one gets its own, as the crypto source gives.
+  let seed = 41
   const manager = new RoomManager({
     maxRooms: overrides.maxRooms ?? 10,
     gracePeriodMs: 60_000,
     timers: clock.timers,
-    seedSource: () => 42,
+    seedSource: () => ++seed,
     now: () => time.now,
   })
   return { manager, clock, time }
@@ -217,11 +219,11 @@ describe('bots', () => {
   it('lets a human skip the wait with nextHand, and refuses it mid-hand', () => {
     const { manager, clock } = managerWith()
     const { room } = startedTable(manager, { turnSeconds: 10 })
-    expect(room.nextHand(0)).toEqual({ okay: false, error: 'hand_in_progress' })
+    expect(room.nextHand(0, manager.nextSeed())).toEqual({ okay: false, error: 'hand_in_progress' })
     manager.schedule(room, () => undefined)
     for (let i = 0; i < 2000 && room.automation().kind !== 'hand'; i++) clock.fireAll()
     expect(room.automation().kind).toBe('hand')
-    const dealt = room.nextHand(0)
+    const dealt = room.nextHand(0, manager.nextSeed())
     expect(dealt.okay && dealt.value[0]).toMatchObject({ type: 'handStarted', number: 2 })
   })
 })
@@ -307,12 +309,14 @@ describe('game record', () => {
     const { room } = startedTable(manager)
     room.leave('socket-0')
     for (let i = 0; i < 20000 && !room.gameFinished; i++) {
-      if (room.botStep().length === 0) room.dealNextHandAutomatically()
+      if (room.botStep().length === 0) room.dealNextHandAutomatically(manager.nextSeed())
     }
     expect(room.gameFinished).toBe(true)
 
     const record = room.gameRecord
-    expect(record?.steps).toContainEqual({ kind: 'nextHand' })
+    const dealSeeds = (record?.steps ?? []).flatMap((s) => (s.kind === 'nextHand' ? [s.seed] : []))
+    expect(dealSeeds.length).toBeGreaterThan(1)
+    expect(new Set(dealSeeds).size).toBe(dealSeeds.length)
     const replayed = record === null ? null : replay(record)
     expect(replayed?.okay && replayed.value.scores).toEqual(room.viewFor(1)?.scores)
     expect(replayed?.okay && replayed.value.phase).toBe('finished')

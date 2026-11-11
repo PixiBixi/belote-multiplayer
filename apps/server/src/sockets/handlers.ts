@@ -446,7 +446,7 @@ export function registerSocketHandlers(
         const admitted = admit(emptyPayloadSchema, payload, ack, controlLimiter)
         if (admitted === null) return
         const { presence } = admitted
-        const dealt = presence.room.nextHand(presence.seat)
+        const dealt = presence.room.nextHand(presence.seat, rooms.nextSeed())
         if (refused(dealt, ack)) return
         ack({ ok: true })
         retime(presence.room)

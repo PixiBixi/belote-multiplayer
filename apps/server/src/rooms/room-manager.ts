@@ -1,5 +1,12 @@
 import { randomInt } from 'node:crypto'
-import { DEFAULT_TABLE_RULES, err, ok, type Result, type TableRules } from '@belote/engine'
+import {
+  DEFAULT_TABLE_RULES,
+  err,
+  ok,
+  type DeckSeed,
+  type Result,
+  type TableRules,
+} from '@belote/engine'
 import {
   BETWEEN_HANDS_SECONDS,
   BOT_DELAY_MS,
@@ -20,7 +27,7 @@ type RoomManagerOptions = {
   maxRooms: number
   gracePeriodMs: number
   timers?: Timers
-  seedSource?: () => number
+  seedSource?: () => DeckSeed
   /** Injectable for the same reason the timers are: tests must not wait. */
   now?: () => number
 }
@@ -52,7 +59,7 @@ export class RoomManager {
   private readonly maxRooms: number
   private readonly gracePeriodMs: number
   private readonly timers: Timers
-  private readonly seedSource: () => number
+  private readonly seedSource: () => DeckSeed
   private readonly now: () => number
 
   constructor(options: RoomManagerOptions) {
@@ -83,7 +90,7 @@ export class RoomManager {
   }
 
   /** The seed source, so a start or restart can draw one without owning randomness. */
-  nextSeed(): number {
+  nextSeed(): DeckSeed {
     return this.seedSource()
   }
 
@@ -171,7 +178,7 @@ export class RoomManager {
       case 'hand':
         ms = BETWEEN_HANDS_SECONDS * 1000
         room.setNextHandDeadline(this.now() + ms)
-        run = () => room.dealNextHandAutomatically()
+        run = () => room.dealNextHandAutomatically(this.nextSeed())
         break
     }
     const handle = this.timers.setTimeout(refire(run), ms)

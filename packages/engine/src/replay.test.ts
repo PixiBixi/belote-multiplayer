@@ -10,8 +10,10 @@ function recordedGame(seed: number, rules: TableRules): { record: GameRecord; fi
   const steps: GameStep[] = []
   for (let turn = 0; turn < 20000 && state.phase !== 'finished'; turn++) {
     if (state.hand.phase === 'done') {
-      state = nextHand(state)
-      steps.push({ kind: 'nextHand' })
+      // A 128-bit seed per hand, as the server draws them.
+      const handSeed = [seed, state.handNumber, 3, 4] as const
+      state = nextHand(state, handSeed)
+      steps.push({ kind: 'nextHand', seed: handSeed })
       continue
     }
     const seat = state.hand.currentSeat
@@ -55,7 +57,7 @@ describe('replay', () => {
       steps: [first, { kind: 'move', seat: first.seat, move: first.move }],
     }
     expect(replay(broken)).toEqual({ okay: false, error: { step: 1, error: 'not_your_turn' } })
-    expect(replay({ ...record, steps: [{ kind: 'nextHand' }] })).toEqual({
+    expect(replay({ ...record, steps: [{ kind: 'nextHand', seed: 1 }] })).toEqual({
       okay: false,
       error: { step: 0, error: 'hand_not_done' },
     })

@@ -1,6 +1,6 @@
 import { buildDeck, legalCards, winningIndex } from './cards.js'
 import { declarationWinner, findDeclarations } from './declarations.js'
-import { nextInt, shuffle } from './rng.js'
+import { deckState, nextDeckInt, shuffle, type DeckSeed, type DeckState } from './rng.js'
 import { scoreHand } from './scoring.js'
 import {
   CAPOT_VALUE,
@@ -30,8 +30,8 @@ export const nextSeat = (seat: number): number => (seat + 1) % SEATS
 export function dealHand(
   rules: TableRules,
   dealer: number,
-  rngState: number,
-): { hand: HandState; rngState: number } {
+  rngState: DeckState,
+): { hand: HandState; rngState: DeckState } {
   const shuffled = shuffle(buildDeck(), rngState)
   const deck = shuffled.items
   const hands: Card[][] = [[], [], [], []]
@@ -72,9 +72,9 @@ export function dealHand(
   }
 }
 
-export function createGame(options: { seed: number; rules?: Partial<TableRules> }): GameState {
+export function createGame(options: { seed: DeckSeed; rules?: Partial<TableRules> }): GameState {
   const rules = { ...DEFAULT_TABLE_RULES, ...options.rules }
-  const pick = nextInt(options.seed, SEATS)
+  const pick = nextDeckInt(deckState(options.seed), SEATS)
   const dealt = dealHand(rules, pick.value, pick.state)
   return {
     rules,
@@ -89,10 +89,13 @@ export function createGame(options: { seed: number; rules?: Partial<TableRules> 
   }
 }
 
-/** Deals the next hand once the current one is over; the dealer moves one seat on. */
-export function nextHand(state: GameState): GameState {
+/**
+ * Deals the next hand once the current one is over; the dealer moves one seat on. Every
+ * hand has its own seed: continuing the previous stream would let one known hand open the next.
+ */
+export function nextHand(state: GameState, seed: DeckSeed): GameState {
   if (state.phase === 'finished' || state.hand.phase !== 'done') return state
-  const dealt = dealHand(state.rules, nextSeat(state.hand.dealer), state.rngState)
+  const dealt = dealHand(state.rules, nextSeat(state.hand.dealer), deckState(seed))
   return { ...state, rngState: dealt.rngState, hand: dealt.hand, handNumber: state.handNumber + 1 }
 }
 

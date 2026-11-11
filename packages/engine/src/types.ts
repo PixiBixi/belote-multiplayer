@@ -1,3 +1,5 @@
+import type { DeckState } from './rng.js'
+
 /** Spades, hearts, diamonds, clubs. */
 export type Suit = 'S' | 'H' | 'D' | 'C'
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'] as const
@@ -145,7 +147,7 @@ export type GamePhase = 'playing' | 'finished'
 
 export type GameState = {
   rules: TableRules
-  rngState: number
+  rngState: DeckState
   phase: GamePhase
   /** Cumulative, indexed by team. */
   scores: [number, number]
