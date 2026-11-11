@@ -472,3 +472,38 @@ describe('leave, disconnect, takeover and reclaim', () => {
     expect(room.abandoned).toBe(false)
   })
 })
+
+describe('one socket, one seat', () => {
+  const twoHumans = () => {
+    const { manager } = managerWith()
+    const room = createdRoom(manager)
+    const ana = room.join('Ana', 'socket-0')
+    const ben = room.join('Ben', 'socket-1')
+    if (!ana.okay || !ben.okay) throw new Error('join failed')
+    for (const seat of [2, 3]) room.setSeat(0, seat, { kind: 'bot', level: 'normal' })
+    const started = room.start(0, manager.nextSeed())
+    if (!started.okay) throw new Error(started.error)
+    return { room, anaToken: ana.value.sessionToken, benToken: ben.value.sessionToken }
+  }
+
+  it('refuses a mid-game join by name from a socket that already holds a seat', () => {
+    const { room } = twoHumans()
+    room.disconnect('socket-0')
+    // socket-1 sits at seat 1 and asks for the absent Ana by name.
+    expect(room.join('Ana', 'socket-1')).toEqual({ okay: false, error: 'invalid_session' })
+    expect(room.seatOfSocket('socket-1')).toBe(1)
+    expect(room.socketAt(0)).toBeNull()
+  })
+
+  it('refuses a rejoin with another seat token from a seated socket', () => {
+    const { room, anaToken } = twoHumans()
+    room.disconnect('socket-0')
+    expect(room.rejoin(anaToken, 'socket-1')).toEqual({ okay: false, error: 'invalid_session' })
+    expect(room.seatOfSocket('socket-1')).toBe(1)
+  })
+
+  it('still lets a socket rejoin the seat it already holds', () => {
+    const { room, benToken } = twoHumans()
+    expect(room.rejoin(benToken, 'socket-1').okay).toBe(true)
+  })
+})

@@ -458,6 +458,10 @@ export class Room {
     )
     const slot = this.slots[seat]
     if (slot === undefined || slot.kind === 'empty') return err('invalid_session')
+    /* One seat per socket: a second one would get both hands, and on disconnect only the
+       first would be marked, leaving the other active forever with a dead socket. */
+    const holding = this.seatOfSocket(socketId)
+    if (holding !== null && holding !== seat) return err('invalid_session')
 
     if (slot.kind === 'bot') {
       if (slot.standIn === null) return err('invalid_session')
