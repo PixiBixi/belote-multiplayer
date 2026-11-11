@@ -1,4 +1,3 @@
-import { randomInt } from 'node:crypto'
 import {
   DEFAULT_TABLE_RULES,
   err,
@@ -15,6 +14,7 @@ import {
   type GameEvent,
   type MatchPace,
 } from '@belote/protocol'
+import { randomDealSeed } from './deal-seed.js'
 import { generateRoomCode } from './room-code.js'
 import { Room } from './room.js'
 
@@ -66,7 +66,7 @@ export class RoomManager {
     this.maxRooms = options.maxRooms
     this.gracePeriodMs = options.gracePeriodMs
     this.timers = options.timers ?? defaultTimers
-    this.seedSource = options.seedSource ?? (() => randomInt(2 ** 31 - 1))
+    this.seedSource = options.seedSource ?? randomDealSeed
     this.now = options.now ?? (() => Date.now())
   }
 
