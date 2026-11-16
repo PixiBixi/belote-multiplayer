@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.15](https://github.com/PixiBixi/belote-multiplayer/compare/fb7e52496b1e9067ffe31aee2eb9012c55bb24f0..v1.1.15) - 2026-11-16
+#### Miscellaneous Chores
+- (**deps**) lock file maintenance (#18) - ([fb7e524](https://github.com/PixiBixi/belote-multiplayer/commit/fb7e52496b1e9067ffe31aee2eb9012c55bb24f0)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.14](https://github.com/PixiBixi/belote-multiplayer/compare/7668f841703dfbdbeef4e1c9dc2d8642932116f5..v1.1.14) - 2026-11-14
 #### Miscellaneous Chores
 - (**deps**) update dev-dependencies (#17) - ([7668f84](https://github.com/PixiBixi/belote-multiplayer/commit/7668f841703dfbdbeef4e1c9dc2d8642932116f5)) - renovate[bot], renovate[bot]
