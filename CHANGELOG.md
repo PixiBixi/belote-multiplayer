@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.16](https://github.com/PixiBixi/belote-multiplayer/compare/6298fe9e3803d792b2dcb17962750903f176f807..v1.1.16) - 2026-11-17
+#### Miscellaneous Chores
+- (**deps**) update node.js to 6bd9ab4 (#19) - ([6298fe9](https://github.com/PixiBixi/belote-multiplayer/commit/6298fe9e3803d792b2dcb17962750903f176f807)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.15](https://github.com/PixiBixi/belote-multiplayer/compare/fb7e52496b1e9067ffe31aee2eb9012c55bb24f0..v1.1.15) - 2026-11-16
 #### Miscellaneous Chores
 - (**deps**) lock file maintenance (#18) - ([fb7e524](https://github.com/PixiBixi/belote-multiplayer/commit/fb7e52496b1e9067ffe31aee2eb9012c55bb24f0)) - renovate[bot], renovate[bot]
