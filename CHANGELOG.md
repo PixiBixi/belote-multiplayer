@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.19](https://github.com/PixiBixi/belote-multiplayer/compare/02940b952fc8a407b72caa45a2b03202112e3579..v1.1.19) - 2026-11-23
+#### Miscellaneous Chores
+- (**deps**) lock file maintenance (#21) - ([02940b9](https://github.com/PixiBixi/belote-multiplayer/commit/02940b952fc8a407b72caa45a2b03202112e3579)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.18](https://github.com/PixiBixi/belote-multiplayer/compare/36f574be3ea22ff6d64a2413e5af265d180acd37..v1.1.18) - 2026-11-22
 #### Miscellaneous Chores
 - (**deps**) update dependency typescript-eslint to v8.73.0 (#20) - ([36f574b](https://github.com/PixiBixi/belote-multiplayer/commit/36f574be3ea22ff6d64a2413e5af265d180acd37)) - renovate[bot], renovate[bot]
