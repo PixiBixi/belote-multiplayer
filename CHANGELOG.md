@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.20](https://github.com/PixiBixi/belote-multiplayer/compare/44dec4691de33cb486a849625bcd93f6e4a71b0d..v1.1.20) - 2026-11-23
+#### Miscellaneous Chores
+- (**deps**) update step-security/harden-runner action to v2.23.0 (#22) - ([44dec46](https://github.com/PixiBixi/belote-multiplayer/commit/44dec4691de33cb486a849625bcd93f6e4a71b0d)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.19](https://github.com/PixiBixi/belote-multiplayer/compare/02940b952fc8a407b72caa45a2b03202112e3579..v1.1.19) - 2026-11-23
 #### Miscellaneous Chores
 - (**deps**) lock file maintenance (#21) - ([02940b9](https://github.com/PixiBixi/belote-multiplayer/commit/02940b952fc8a407b72caa45a2b03202112e3579)) - renovate[bot], renovate[bot]
