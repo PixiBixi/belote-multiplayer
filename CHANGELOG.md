@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.21](https://github.com/PixiBixi/belote-multiplayer/compare/c7de79d4338c93ce113b24b69f01118a63f2fdc0..v1.1.21) - 2026-11-24
+#### Miscellaneous Chores
+- (**deps**) update coturn/coturn docker tag to v4.19 (#23) - ([c7de79d](https://github.com/PixiBixi/belote-multiplayer/commit/c7de79d4338c93ce113b24b69f01118a63f2fdc0)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.20](https://github.com/PixiBixi/belote-multiplayer/compare/44dec4691de33cb486a849625bcd93f6e4a71b0d..v1.1.20) - 2026-11-23
 #### Miscellaneous Chores
 - (**deps**) update step-security/harden-runner action to v2.23.0 (#22) - ([44dec46](https://github.com/PixiBixi/belote-multiplayer/commit/44dec4691de33cb486a849625bcd93f6e4a71b0d)) - renovate[bot], renovate[bot]
