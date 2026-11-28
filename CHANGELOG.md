@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v1.1.23](https://github.com/PixiBixi/belote-multiplayer/compare/d1da8a9382a287a957b9af8b6c436384001eb174..v1.1.23) - 2026-11-28
+#### Miscellaneous Chores
+- (**deps**) update zizmorcore/zizmor-action action to v0.9.1 (#25) - ([d1da8a9](https://github.com/PixiBixi/belote-multiplayer/commit/d1da8a9382a287a957b9af8b6c436384001eb174)) - renovate[bot], renovate[bot]
+
+- - -
+
 ## [v1.1.22](https://github.com/PixiBixi/belote-multiplayer/compare/e8c18b0ef67120d1ec65b6b96b48d433d8e359d1..v1.1.22) - 2026-11-26
 #### Miscellaneous Chores
 - (**deps**) update docker/dockerfile:1 docker digest to 572cebb (#24) - ([e8c18b0](https://github.com/PixiBixi/belote-multiplayer/commit/e8c18b0ef67120d1ec65b6b96b48d433d8e359d1)) - renovate[bot], renovate[bot]
